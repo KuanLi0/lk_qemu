@@ -82,6 +82,23 @@ static TCGv cpu_seg_base[6];
 static TCGv_i64 cpu_bndl[4];
 static TCGv_i64 cpu_bndu[4];
 
+typedef enum SSETrMode {
+    SSE_TR_ORIG = 0,
+    SSE_TR_SCALAR_FP,
+} SSETrMode;
+
+typedef enum XMMDomain {
+    XMM_DOMAIN_UNKNOWN = 0,
+    XMM_DOMAIN_HELPER,
+    XMM_DOMAIN_SCALAR_FP,
+} XMMDomain;
+
+typedef struct XMMState {
+    XMMDomain low64_domain;
+    bool high64_valid;
+    bool high64_zero;
+} XMMState;
+
 typedef struct DisasContext {
     DisasContextBase base;
 
@@ -137,6 +154,10 @@ typedef struct DisasContext {
     sigjmp_buf jmpbuf;
     TCGOp *prev_insn_start;
     TCGOp *prev_insn_end;
+
+    SSETrMode cur_sse_mode;
+    uint32_t enabled_sse_modes;
+    XMMState xmm_state[16];
 } DisasContext;
 
 /*
@@ -3443,6 +3464,7 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     uint32_t cflags = tb_cflags(dc->base.tb);
     int cpl = (flags >> HF_CPL_SHIFT) & 3;
     int iopl = (flags >> IOPL_SHIFT) & 3;
+    int i;
 
     dc->cs_base = dc->base.tb->cs_base;
     dc->pc_save = dc->base.pc_next;
@@ -3485,6 +3507,13 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     dc->A0 = tcg_temp_new();
 
     dc->cc_srcT = tcg_temp_new();
+    dc->cur_sse_mode = SSE_TR_ORIG;
+    dc->enabled_sse_modes = 0;
+    for (i = 0; i < ARRAY_SIZE(dc->xmm_state); i++) {
+        dc->xmm_state[i].low64_domain = XMM_DOMAIN_UNKNOWN;
+        dc->xmm_state[i].high64_valid = false;
+        dc->xmm_state[i].high64_zero = false;
+    }
 }
 
 static void i386_tr_tb_start(DisasContextBase *db, CPUState *cpu)

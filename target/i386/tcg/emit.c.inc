@@ -612,7 +612,100 @@ static void gen_##uname(DisasContext *s, X86DecodedInsn *decode)                
 }
 FP_SSE(VADD, add)
 FP_SSE(VMUL, mul)
-FP_SSE(VSUB, sub)
+
+typedef struct SSEInsnInfo {
+    bool is_subsd;
+    bool is_scalar;
+    bool is_reg_reg;
+    bool uses_vex;
+    bool preserve_high64;
+    int dst_reg;
+    int src_reg;
+} SSEInsnInfo;
+
+static void gen_VSUB_orig(DisasContext *s, X86DecodedInsn *decode)
+{
+    if (!decode->op[0].has_ea) {
+        int dst = decode->op[0].n;
+
+        s->xmm_state[dst].low64_domain = XMM_DOMAIN_HELPER;
+        s->xmm_state[dst].high64_valid = false;
+        s->xmm_state[dst].high64_zero = false;
+    }
+    s->cur_sse_mode = SSE_TR_ORIG;
+    gen_fp_sse(s, decode,
+               gen_helper_subpd_xmm,
+               gen_helper_subps_xmm,
+               gen_helper_subpd_ymm,
+               gen_helper_subps_ymm,
+               gen_helper_subsd,
+               gen_helper_subss);
+}
+
+static SSEInsnInfo build_sse_info_vsub(DisasContext *s, X86DecodedInsn *decode)
+{
+    SSEInsnInfo info = {
+        .is_subsd = (s->prefix & (PREFIX_REPZ | PREFIX_REPNZ | PREFIX_DATA))
+                    == PREFIX_REPNZ,
+        .uses_vex = s->prefix & PREFIX_VEX,
+        .dst_reg = -1,
+        .src_reg = -1,
+    };
+
+    info.is_scalar = info.is_subsd;
+    info.is_reg_reg = !decode->op[0].has_ea && !decode->op[2].has_ea;
+    info.preserve_high64 = info.is_subsd;
+    if (!decode->op[0].has_ea) {
+        info.dst_reg = decode->op[0].n;
+    }
+    if (!decode->op[2].has_ea) {
+        info.src_reg = decode->op[2].n;
+    }
+    return info;
+}
+
+static bool can_use_scalar_subsd(DisasContext *s, X86DecodedInsn *decode,
+                                 const SSEInsnInfo *info)
+{
+    (void)decode;
+
+    return info->is_subsd &&
+           info->is_reg_reg &&
+           !info->uses_vex &&
+           info->dst_reg >= 0 &&
+           info->src_reg >= 0 &&
+           (s->enabled_sse_modes & (1u << SSE_TR_SCALAR_FP));
+}
+
+static void gen_VSUB_scalar(DisasContext *s, X86DecodedInsn *decode,
+                            const SSEInsnInfo *info)
+{
+    (void)decode;
+
+    int dst = info->dst_reg;
+
+    s->cur_sse_mode = SSE_TR_SCALAR_FP;
+    gen_helper_subsd_fast(tcg_env,
+                          tcg_constant_i32(dst),
+                          tcg_constant_i32(dst),
+                          tcg_constant_i32(info->src_reg));
+    s->xmm_state[dst].low64_domain = XMM_DOMAIN_SCALAR_FP;
+    s->xmm_state[dst].high64_valid = false;
+    s->xmm_state[dst].high64_zero = false;
+}
+
+static void gen_VSUB(DisasContext *s, X86DecodedInsn *decode)
+{
+    SSEInsnInfo info = build_sse_info_vsub(s, decode);
+
+    if (can_use_scalar_subsd(s, decode, &info)) {
+        gen_VSUB_scalar(s, decode, &info);
+        return;
+    }
+
+    gen_VSUB_orig(s, decode);
+}
+
 FP_SSE(VMIN, min)
 FP_SSE(VDIV, div)
 FP_SSE(VMAX, max)
