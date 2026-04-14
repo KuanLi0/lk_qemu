@@ -610,18 +610,56 @@ static void gen_##uname(DisasContext *s, X86DecodedInsn *decode)                
                gen_helper_##lname##sd,                                             \
                gen_helper_##lname##ss);                                            \
 }
-FP_SSE(VADD, add)
 FP_SSE(VMUL, mul)
 
 typedef struct SSEInsnInfo {
-    bool is_subsd;
-    bool is_scalar;
+    bool is_sd;
     bool is_reg_reg;
     bool uses_vex;
-    bool preserve_high64;
     int dst_reg;
     int src_reg;
 } SSEInsnInfo;
+
+typedef enum XtheadSSEFastPathKind {
+    XTHEAD_SSE_FASTPATH_FADD_SD,
+    XTHEAD_SSE_FASTPATH_FSUB_SD,
+} XtheadSSEFastPathKind;
+
+enum {
+    XTHEAD_SSE_MATCH_SD = (1 << 0),
+    XTHEAD_SSE_MATCH_REG_REG = (1 << 1),
+    XTHEAD_SSE_MATCH_LEGACY = (1 << 2),
+};
+
+typedef struct XtheadSSEFastPath {
+    unsigned match;
+    XtheadSSEFastPathKind kind;
+} XtheadSSEFastPath;
+
+static const XtheadSSEFastPath xthead_vaddsd_vec = {
+    .match = XTHEAD_SSE_MATCH_SD |
+             XTHEAD_SSE_MATCH_REG_REG |
+             XTHEAD_SSE_MATCH_LEGACY,
+    .kind = XTHEAD_SSE_FASTPATH_FADD_SD,
+};
+
+static const XtheadSSEFastPath xthead_vsubsd_vec = {
+    .match = XTHEAD_SSE_MATCH_SD |
+             XTHEAD_SSE_MATCH_REG_REG |
+             XTHEAD_SSE_MATCH_LEGACY,
+    .kind = XTHEAD_SSE_FASTPATH_FSUB_SD,
+};
+
+static void gen_VADD_orig(DisasContext *s, X86DecodedInsn *decode)
+{
+    gen_fp_sse(s, decode,
+               gen_helper_addpd_xmm,
+               gen_helper_addps_xmm,
+               gen_helper_addpd_ymm,
+               gen_helper_addps_ymm,
+               gen_helper_addsd,
+               gen_helper_addss);
+}
 
 static void gen_VSUB_orig(DisasContext *s, X86DecodedInsn *decode)
 {
@@ -642,19 +680,18 @@ static void gen_VSUB_orig(DisasContext *s, X86DecodedInsn *decode)
                gen_helper_subss);
 }
 
-static SSEInsnInfo build_sse_info_vsub(DisasContext *s, X86DecodedInsn *decode)
+static SSEInsnInfo build_sse_binary_fp_info(DisasContext *s,
+                                            X86DecodedInsn *decode)
 {
     SSEInsnInfo info = {
-        .is_subsd = (s->prefix & (PREFIX_REPZ | PREFIX_REPNZ | PREFIX_DATA))
-                    == PREFIX_REPNZ,
+        .is_sd = (s->prefix & (PREFIX_REPZ | PREFIX_REPNZ | PREFIX_DATA))
+                 == PREFIX_REPNZ,
         .uses_vex = s->prefix & PREFIX_VEX,
         .dst_reg = -1,
         .src_reg = -1,
     };
 
-    info.is_scalar = info.is_subsd;
     info.is_reg_reg = !decode->op[0].has_ea && !decode->op[2].has_ea;
-    info.preserve_high64 = info.is_subsd;
     if (!decode->op[0].has_ea) {
         info.dst_reg = decode->op[0].n;
     }
@@ -664,46 +701,118 @@ static SSEInsnInfo build_sse_info_vsub(DisasContext *s, X86DecodedInsn *decode)
     return info;
 }
 
-static bool can_use_scalar_subsd(DisasContext *s, X86DecodedInsn *decode,
-                                 const SSEInsnInfo *info)
+#ifdef TCG_TARGET_RISCV64
+static TCGOpcode xthead_sse_fastpath_opcode(const XtheadSSEFastPath *fast)
 {
-    (void)decode;
-
-    return info->is_subsd &&
-           info->is_reg_reg &&
-           !info->uses_vex &&
-           info->dst_reg >= 0 &&
-           info->src_reg >= 0 &&
-           (s->enabled_sse_modes & (1u << SSE_TR_SCALAR_FP));
+    switch (fast->kind) {
+    case XTHEAD_SSE_FASTPATH_FADD_SD:
+        return INDEX_op_xthead_vfaddsd_vec;
+    case XTHEAD_SSE_FASTPATH_FSUB_SD:
+        return INDEX_op_xthead_vfsubsd_vec;
+    default:
+        g_assert_not_reached();
+    }
 }
 
-static void gen_VSUB_scalar(DisasContext *s, X86DecodedInsn *decode,
-                            const SSEInsnInfo *info)
+static bool xthead_sse_fastpath_matches(const SSEInsnInfo *info,
+                                        const XtheadSSEFastPath *fast)
 {
-    (void)decode;
+    if ((fast->match & XTHEAD_SSE_MATCH_SD) && !info->is_sd) {
+        return false;
+    }
+    if ((fast->match & XTHEAD_SSE_MATCH_REG_REG) && !info->is_reg_reg) {
+        return false;
+    }
+    if ((fast->match & XTHEAD_SSE_MATCH_LEGACY) && info->uses_vex) {
+        return false;
+    }
+    if (info->dst_reg < 0 || info->src_reg < 0) {
+        return false;
+    }
+    return tcg_op_supported(xthead_sse_fastpath_opcode(fast), TCG_TYPE_V128, 0);
+}
 
+static void gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
+                                    const SSEInsnInfo *info,
+                                    const XtheadSSEFastPath *fast)
+{
     int dst = info->dst_reg;
+    bool high64_zero = s->xmm_state[dst].high64_valid &&
+                       s->xmm_state[dst].high64_zero;
+    TCGv_vec dstv;
+    TCGv_vec srcv;
 
-    s->cur_sse_mode = SSE_TR_SCALAR_FP;
-    gen_helper_subsd_fast(tcg_env,
-                          tcg_constant_i32(dst),
-                          tcg_constant_i32(dst),
-                          tcg_constant_i32(info->src_reg));
-    s->xmm_state[dst].low64_domain = XMM_DOMAIN_SCALAR_FP;
-    s->xmm_state[dst].high64_valid = false;
-    s->xmm_state[dst].high64_zero = false;
+    compute_xmm_offset(&decode->op[0]);
+    compute_xmm_offset(&decode->op[2]);
+
+    dstv = tcg_temp_new_vec(TCG_TYPE_V128);
+    srcv = tcg_temp_new_vec(TCG_TYPE_V128);
+    tcg_gen_ld_vec(dstv, OP_PTR0, 0);
+    tcg_gen_ld_vec(srcv, OP_PTR2, 0);
+    switch (fast->kind) {
+    case XTHEAD_SSE_FASTPATH_FADD_SD:
+        tcg_gen_xthead_vfaddsd_vec(dstv, dstv, srcv);
+        break;
+    case XTHEAD_SSE_FASTPATH_FSUB_SD:
+        tcg_gen_xthead_vfsubsd_vec(dstv, dstv, srcv);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+    tcg_gen_st_vec(dstv, OP_PTR0, 0);
+
+    s->cur_sse_mode = SSE_TR_ORIG;
+    s->xmm_state[dst].low64_domain = XMM_DOMAIN_UNKNOWN;
+    s->xmm_state[dst].high64_valid = true;
+    s->xmm_state[dst].high64_zero = high64_zero;
+}
+
+static bool try_gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
+                                        const SSEInsnInfo *info,
+                                        const XtheadSSEFastPath *fast)
+{
+    if (!xthead_sse_fastpath_matches(info, fast)) {
+        return false;
+    }
+    gen_xthead_sse_fastpath(s, decode, info, fast);
+    return true;
+}
+#else
+static bool try_gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
+                                        const SSEInsnInfo *info,
+                                        const XtheadSSEFastPath *fast)
+{
+    (void)s;
+    (void)decode;
+    (void)info;
+    (void)fast;
+    return false;
+}
+#endif
+
+typedef void (*SSEEmitFn)(DisasContext *s, X86DecodedInsn *decode);
+
+static void gen_binary_fp_sse_with_fastpath(DisasContext *s,
+                                            X86DecodedInsn *decode,
+                                            SSEEmitFn gen_orig,
+                                            const XtheadSSEFastPath *fast)
+{
+    SSEInsnInfo info = build_sse_binary_fp_info(s, decode);
+
+    if (try_gen_xthead_sse_fastpath(s, decode, &info, fast)) {
+        return;
+    }
+    gen_orig(s, decode);
+}
+
+static void gen_VADD(DisasContext *s, X86DecodedInsn *decode)
+{
+    gen_binary_fp_sse_with_fastpath(s, decode, gen_VADD_orig, &xthead_vaddsd_vec);
 }
 
 static void gen_VSUB(DisasContext *s, X86DecodedInsn *decode)
 {
-    SSEInsnInfo info = build_sse_info_vsub(s, decode);
-
-    if (can_use_scalar_subsd(s, decode, &info)) {
-        gen_VSUB_scalar(s, decode, &info);
-        return;
-    }
-
-    gen_VSUB_orig(s, decode);
+    gen_binary_fp_sse_with_fastpath(s, decode, gen_VSUB_orig, &xthead_vsubsd_vec);
 }
 
 FP_SSE(VMIN, min)

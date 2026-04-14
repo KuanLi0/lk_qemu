@@ -3286,15 +3286,6 @@ void helper_update_mxcsr(CPUX86State *env)
     update_mxcsr_from_sse_status(env);
 }
 
-void helper_subsd_fast(CPUX86State *env, uint32_t dst_reg,
-                       uint32_t src1_reg, uint32_t src2_reg)
-{
-    env->xmm_regs[dst_reg].ZMM_D(0) =
-        float64_sub(env->xmm_regs[src1_reg].ZMM_D(0),
-                    env->xmm_regs[src2_reg].ZMM_D(0),
-                    &env->sse_status);
-}
-
 void helper_ldmxcsr(CPUX86State *env, uint32_t val)
 {
     cpu_set_mxcsr(env, val);

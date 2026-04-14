@@ -12,6 +12,12 @@
 #define CPUINFO_ZBS             (1u << 3)
 #define CPUINFO_ZICOND          (1u << 4)
 #define CPUINFO_ZVE64X          (1u << 5)
+#define CPUINFO_ZVE64D          (1u << 6)
+/*
+ * The migrated T-Head fast path uses double-precision vector FP, so only
+ * enable it when the host can prove Zve64d-or-better semantics.
+ */
+#define CPUINFO_XTHEADVECTOR    (1u << 7)
 
 /* Initialized with a constructor. */
 extern unsigned cpuinfo;

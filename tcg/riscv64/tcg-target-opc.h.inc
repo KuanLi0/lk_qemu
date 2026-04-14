@@ -10,3 +10,5 @@
  * emitted by tcg_expand_vec_op.  For those familiar with GCC internals,
  * consider these to be UNSPEC with names.
  */
+DEF(xthead_vfaddsd_vec, 1, 2, 0, TCG_OPF_VECTOR)
+DEF(xthead_vfsubsd_vec, 1, 2, 0, TCG_OPF_VECTOR)

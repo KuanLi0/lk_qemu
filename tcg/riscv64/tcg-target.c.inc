@@ -27,6 +27,8 @@
  * THE SOFTWARE.
  */
 
+#include "tcg/riscv64/xthead-enc.h"
+
 /* Used for function call generation. */
 #define TCG_REG_CALL_STACK              TCG_REG_SP
 #define TCG_TARGET_STACK_ALIGN          16
@@ -48,6 +50,11 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
     "v24",  "v25", "v26", "v27", "v28", "v29", "v30", "v31",
 };
 #endif
+
+static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg);
+static void tcg_out_movi(TCGContext *s, TCGType type, TCGReg rd,
+                         tcg_target_long val);
+static void init_setting_vtype(TCGContext *s);
 
 static const int tcg_target_reg_alloc_order[] = {
     /* Call saved registers */
@@ -714,6 +721,94 @@ static void tcg_out_opc_vvm_mask(TCGContext *s, RISCVInsn opc, TCGReg vd,
                                  TCGReg vs2, TCGReg vs1)
 {
     tcg_out32(s, encode_v(opc, vd, vs1, vs2, false));
+}
+
+static void tcg_out_xthead_vsetvli(TCGContext *s, TCGReg rd, TCGReg rs1,
+                                   uint32_t vtypei)
+{
+    tcg_out32(s, xthead_encode_vsetvli(rd, rs1, vtypei));
+}
+
+static void tcg_out_xthead_vfadd_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
+                                    TCGReg vs2)
+{
+    tcg_out32(s, xthead_encode_vfadd_vv(vd, vs1, vs2, true));
+}
+
+static void tcg_out_xthead_vfsub_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
+                                    TCGReg vs2)
+{
+    tcg_out32(s, xthead_encode_vfsub_vv(vd, vs1, vs2, true));
+}
+
+static void tcg_out_xthead_vle64(TCGContext *s, TCGReg vd, TCGReg base,
+                                 intptr_t offset)
+{
+    tcg_debug_assert(vd >= TCG_REG_V0);
+    tcg_debug_assert(base < TCG_REG_V0);
+
+    if (offset) {
+        tcg_debug_assert(base != TCG_REG_ZERO);
+        if (offset == sextreg(offset, 0, 12)) {
+            tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, base, offset);
+        } else {
+            tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_TMP0, offset);
+            tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, TCG_REG_TMP0, base);
+        }
+        base = TCG_REG_TMP0;
+    }
+    tcg_out32(s, xthead_encode_vle64(vd, base, 0, true));
+}
+
+static void tcg_out_xthead_vse64(TCGContext *s, TCGReg vs3, TCGReg base,
+                                 intptr_t offset)
+{
+    tcg_debug_assert(vs3 >= TCG_REG_V0);
+    tcg_debug_assert(base < TCG_REG_V0);
+
+    if (offset) {
+        tcg_debug_assert(base != TCG_REG_ZERO);
+        if (offset == sextreg(offset, 0, 12)) {
+            tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, base, offset);
+        } else {
+            tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_TMP0, offset);
+            tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, TCG_REG_TMP0, base);
+        }
+        base = TCG_REG_TMP0;
+    }
+    tcg_out32(s, xthead_encode_vse64(vs3, base, 0, true));
+}
+
+static void tcg_out_xthead_vconfig_f64_scalar(TCGContext *s)
+{
+    uint32_t vtypei = xthead_encode_vtypei(false, false,
+                                           XTHEAD_VSEW_64, XTHEAD_VLMUL_M1);
+
+    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, TCG_REG_ZERO, 1);
+    tcg_out_xthead_vsetvli(s, TCG_REG_ZERO, TCG_REG_TMP0, vtypei);
+}
+
+static void tcg_out_xthead_scalarsd(TCGContext *s, TCGOpcode opc,
+                                    TCGReg dst, TCGReg old_dst, TCGReg src)
+{
+    if (dst != old_dst) {
+        tcg_out_mov(s, TCG_TYPE_V128, dst, old_dst);
+    }
+
+    tcg_out_xthead_vconfig_f64_scalar(s);
+    switch (opc) {
+    case INDEX_op_xthead_vfaddsd_vec:
+        tcg_out_xthead_vfadd_vv(s, dst, src, dst);
+        break;
+    case INDEX_op_xthead_vfsubsd_vec:
+        /* RISC-V vv encoding is vd = vs2 - vs1, so keep old_dst in vs2. */
+        tcg_out_xthead_vfsub_vv(s, dst, src, dst);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+    /* Restore the cached vtype state after the temporary AVL=1 scalar setup. */
+    init_setting_vtype(s);
 }
 
 typedef struct VsetCache {
@@ -2662,6 +2757,11 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
     c2 = const_args[2];
 
     switch (opc) {
+    case INDEX_op_xthead_vfaddsd_vec:
+    case INDEX_op_xthead_vfsubsd_vec:
+        tcg_debug_assert(type == TCG_TYPE_V128);
+        tcg_out_xthead_scalarsd(s, opc, a0, a1, a2);
+        break;
     case INDEX_op_dupm_vec:
         tcg_out_dupm_vec(s, type, vece, a0, a1, a2);
         break;
@@ -2870,6 +2970,12 @@ tcg_target_op_def(TCGOpcode op, TCGType type, unsigned flags)
     switch (op) {
     case INDEX_op_st_vec:
         return C_O0_I2(v, r);
+    case INDEX_op_xthead_vfaddsd_vec:
+    case INDEX_op_xthead_vfsubsd_vec:
+        if ((cpuinfo & CPUINFO_XTHEADVECTOR) && type == TCG_TYPE_V128) {
+            return C_O1_I2(v, v, v);
+        }
+        return C_NotImplemented;
     case INDEX_op_dup_vec:
     case INDEX_op_dupm_vec:
     case INDEX_op_ld_vec:

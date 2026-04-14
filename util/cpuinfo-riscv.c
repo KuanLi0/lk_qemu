@@ -37,7 +37,7 @@ static void sigill_handler(int signo, siginfo_t *si, void *data)
 unsigned __attribute__((constructor)) cpuinfo_init(void)
 {
     unsigned left = CPUINFO_ZBA | CPUINFO_ZBB | CPUINFO_ZBS
-                  | CPUINFO_ZICOND | CPUINFO_ZVE64X;
+                  | CPUINFO_ZICOND | CPUINFO_ZVE64X | CPUINFO_ZVE64D;
     unsigned info = cpuinfo;
 
     if (info) {
@@ -61,6 +61,10 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
     (defined(__riscv_vector) || defined(__riscv_zve64x))
     info |= CPUINFO_ZVE64X;
 #endif
+#if defined(__riscv_arch_test) && \
+    (defined(__riscv_vector) || defined(__riscv_zve64d))
+    info |= CPUINFO_ZVE64X | CPUINFO_ZVE64D;
+#endif
     left &= ~info;
 
 #ifdef CONFIG_ASM_HWPROBE_H
@@ -82,9 +86,14 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
             left &= ~CPUINFO_ZICOND;
 #endif
             /* For rv64, V is Zve64d, a superset of Zve64x. */
-            info |= pair.value & RISCV_HWPROBE_IMA_V ? CPUINFO_ZVE64X : 0;
+            info |= pair.value & RISCV_HWPROBE_IMA_V
+                ? CPUINFO_ZVE64X | CPUINFO_ZVE64D : 0;
 #ifdef RISCV_HWPROBE_EXT_ZVE64X
             info |= pair.value & RISCV_HWPROBE_EXT_ZVE64X ? CPUINFO_ZVE64X : 0;
+#endif
+#ifdef RISCV_HWPROBE_EXT_ZVE64D
+            info |= pair.value & RISCV_HWPROBE_EXT_ZVE64D
+                ? CPUINFO_ZVE64X | CPUINFO_ZVE64D : 0;
 #endif
         }
     }
@@ -94,7 +103,7 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
      * We only detect support for vectors with hwprobe.  All kernels with
      * support for vectors in userspace also support the hwprobe syscall.
      */
-    left &= ~CPUINFO_ZVE64X;
+    left &= ~(CPUINFO_ZVE64X | CPUINFO_ZVE64D);
 
     if (left) {
         struct sigaction sa_old, sa_new;
@@ -157,6 +166,16 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
         assert(is_power_of_2(vlenb));
         /* Cache VLEN in a convenient form. */
         riscv_lg2_vlenb = ctz32(vlenb);
+
+    }
+
+    if (info & CPUINFO_ZVE64D) {
+        /*
+         * The xthead scalar-sd fast path emits vfadd.vv/vfsub.vv with SEW=64,
+         * so do not enable it unless double-precision vector FP is available.
+         * If hwprobe cannot prove Zve64d explicitly, keep the fast path off.
+         */
+        info |= CPUINFO_XTHEADVECTOR;
     }
 
     info |= CPUINFO_ALWAYS;

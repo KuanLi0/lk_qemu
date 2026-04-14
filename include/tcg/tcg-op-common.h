@@ -485,6 +485,11 @@ void tcg_gen_ld_vec(TCGv_vec r, TCGv_ptr base, TCGArg offset);
 void tcg_gen_st_vec(TCGv_vec r, TCGv_ptr base, TCGArg offset);
 void tcg_gen_stl_vec(TCGv_vec r, TCGv_ptr base, TCGArg offset, TCGType t);
 
+#ifdef TCG_TARGET_RISCV64
+void tcg_gen_xthead_vfaddsd_vec(TCGv_vec r, TCGv_vec a, TCGv_vec b);
+void tcg_gen_xthead_vfsubsd_vec(TCGv_vec r, TCGv_vec a, TCGv_vec b);
+#endif
+
 /* Host pointer ops */
 
 #if UINTPTR_MAX == UINT32_MAX
