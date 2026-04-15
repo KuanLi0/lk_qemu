@@ -2,6 +2,7 @@
 #include "tcg/riscv64/xthead-enc.h"
 
 #define XTHEAD_V_OPCFG        (0x7u << 12)
+#define XTHEAD_V_OPIVV        (0x0u << 12)
 #define XTHEAD_V_OPMVV        (0x2u << 12)
 #define XTHEAD_V_OPIVI        (0x3u << 12)
 #define XTHEAD_V_OPIVX        (0x4u << 12)
