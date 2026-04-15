@@ -58,6 +58,23 @@ static inline bool use_xthead_vector_backend(void)
     return (cpuinfo & CPUINFO_XTHEADVECTOR) != 0;
 }
 
+static inline bool xthead_supports_vec_op(TCGOpcode op)
+{
+    switch (op) {
+    case INDEX_op_add_vec:
+    case INDEX_op_sub_vec:
+    case INDEX_op_and_vec:
+    case INDEX_op_or_vec:
+    case INDEX_op_shli_vec:
+    case INDEX_op_shri_vec:
+    case INDEX_op_sari_vec:
+    case INDEX_op_cmp_vec:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static const int tcg_target_reg_alloc_order[] = {
     /* Call saved registers */
     /* TCG_REG_S0 reserved for TCG_AREG0 */
@@ -758,6 +775,16 @@ static void tcg_out_xthead_vfsub_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
     tcg_out32(s, xthead_encode_vfsub_vv(vd, vs1, vs2, true));
 }
 
+static void tcg_out_xthead_vlbu_v(TCGContext *s, TCGReg vd, TCGReg base)
+{
+    tcg_out32(s, xthead_encode_vlbu_v(vd, base, 0, true));
+}
+
+static void tcg_out_xthead_vsb_v(TCGContext *s, TCGReg vs3, TCGReg base)
+{
+    tcg_out32(s, xthead_encode_vsb_v(vs3, base, 0, true));
+}
+
 static void tcg_out_xthead_vconfig_f64_scalar(TCGContext *s)
 {
     uint32_t vtypei = xthead_encode_vtypei(false, false,
@@ -850,7 +877,7 @@ static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg)
     case TCG_TYPE_V128:
     case TCG_TYPE_V256:
         if (use_xthead_vector_backend()) {
-            set_vtype_len(s, type);
+            set_vtype_len_sew(s, type, MO_8);
             tcg_out_xthead_vmv_v_v(s, ret, arg);
         } else {
             int lmul = type - riscv_lg2_vlenb;
@@ -1086,10 +1113,15 @@ static void tcg_out_xthead_vec_ldst(TCGContext *s, bool is_load, TCGReg data,
         addr = TCG_REG_TMP0;
     }
 
+    /*
+     * Keep XThead vector memory traffic byte-oriented. The backend already
+     * materializes base+offset in a GPR, so a unit-stride 8-bit transfer is
+     * sufficient and avoids depending on wider load/store encodings here.
+     */
     if (is_load) {
-        tcg_out32(s, xthead_encode_vle64(data, addr, 0, true));
+        tcg_out_xthead_vlbu_v(s, data, addr);
     } else {
-        tcg_out32(s, xthead_encode_vse64(data, addr, 0, true));
+        tcg_out_xthead_vsb_v(s, data, addr);
     }
 }
 
@@ -1109,7 +1141,7 @@ static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg arg,
     case TCG_TYPE_V128:
     case TCG_TYPE_V256:
         if (use_xthead_vector_backend()) {
-            set_vtype_len_sew(s, type, MO_64);
+            set_vtype_len_sew(s, type, MO_8);
             tcg_out_xthead_vec_ldst(s, true, arg, arg1, arg2);
             break;
         } else if (type >= riscv_lg2_vlenb) {
@@ -1152,7 +1184,7 @@ static void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg,
     case TCG_TYPE_V128:
     case TCG_TYPE_V256:
         if (use_xthead_vector_backend()) {
-            set_vtype_len_sew(s, type, MO_64);
+            set_vtype_len_sew(s, type, MO_8);
             tcg_out_xthead_vec_ldst(s, false, arg, arg1, arg2);
             break;
         } else if (type >= riscv_lg2_vlenb) {
@@ -2793,6 +2825,49 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
     a2 = args[2];
     c2 = const_args[2];
 
+    if (use_xthead_vector_backend() && xthead_supports_vec_op(opc)) {
+        switch (opc) {
+        case INDEX_op_add_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_opc_vv_vi(s, OPC_VADD_VV, OPC_VADD_VI, a0, a1, a2, c2);
+            return;
+        case INDEX_op_sub_vec:
+            set_vtype_len_sew(s, type, vece);
+            if (const_args[1]) {
+                tcg_out_opc_vi(s, OPC_VRSUB_VI, a0, a2, a1);
+            } else {
+                tcg_out_opc_vv(s, OPC_VSUB_VV, a0, a1, a2);
+            }
+            return;
+        case INDEX_op_and_vec:
+            set_vtype_len_sew(s, type, MO_8);
+            tcg_out_opc_vv_vi(s, OPC_VAND_VV, OPC_VAND_VI, a0, a1, a2, c2);
+            return;
+        case INDEX_op_or_vec:
+            set_vtype_len_sew(s, type, MO_8);
+            tcg_out_opc_vv_vi(s, OPC_VOR_VV, OPC_VOR_VI, a0, a1, a2, c2);
+            return;
+        case INDEX_op_shli_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_vshifti(s, OPC_VSLL_VI, OPC_VSLL_VX, a0, a1, a2);
+            return;
+        case INDEX_op_shri_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_vshifti(s, OPC_VSRL_VI, OPC_VSRL_VX, a0, a1, a2);
+            return;
+        case INDEX_op_sari_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_vshifti(s, OPC_VSRA_VI, OPC_VSRA_VX, a0, a1, a2);
+            return;
+        case INDEX_op_cmp_vec:
+            tcg_out_cmpsel(s, type, vece, args[3], a0, a1, a2, c2,
+                           -1, true, 0, true);
+            return;
+        default:
+            g_assert_not_reached();
+        }
+    }
+
     switch (opc) {
     case INDEX_op_xthead_vfaddsd_vec:
     case INDEX_op_xthead_vfsubsd_vec:
@@ -2963,6 +3038,10 @@ void tcg_expand_vec_op(TCGOpcode opc, TCGType type, unsigned vece,
 
 int tcg_can_emit_vec_op(TCGOpcode opc, TCGType type, unsigned vece)
 {
+    if (use_xthead_vector_backend()) {
+        return xthead_supports_vec_op(opc);
+    }
+
     switch (opc) {
     case INDEX_op_add_vec:
     case INDEX_op_sub_vec:
@@ -3004,6 +3083,37 @@ int tcg_can_emit_vec_op(TCGOpcode opc, TCGType type, unsigned vece)
 static TCGConstraintSetIndex
 tcg_target_op_def(TCGOpcode op, TCGType type, unsigned flags)
 {
+    if (use_xthead_vector_backend()) {
+        switch (op) {
+        case INDEX_op_st_vec:
+            return C_O0_I2(v, r);
+        case INDEX_op_xthead_vfaddsd_vec:
+        case INDEX_op_xthead_vfsubsd_vec:
+            if (type == TCG_TYPE_V128) {
+                return C_O1_I2(v, v, v);
+            }
+            return C_NotImplemented;
+        case INDEX_op_dup_vec:
+        case INDEX_op_dupm_vec:
+        case INDEX_op_ld_vec:
+            return C_O1_I1(v, r);
+        case INDEX_op_shli_vec:
+        case INDEX_op_shri_vec:
+        case INDEX_op_sari_vec:
+            return C_O1_I1(v, v);
+        case INDEX_op_add_vec:
+        case INDEX_op_and_vec:
+        case INDEX_op_or_vec:
+            return C_O1_I2(v, v, vK);
+        case INDEX_op_sub_vec:
+            return C_O1_I2(v, vK, v);
+        case INDEX_op_cmp_vec:
+            return C_O1_I2(v, v, vL);
+        default:
+            return C_NotImplemented;
+        }
+    }
+
     switch (op) {
     case INDEX_op_st_vec:
         return C_O0_I2(v, r);

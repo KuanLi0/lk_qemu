@@ -32,6 +32,8 @@ uint32_t xthead_encode_vfadd_vv(unsigned vd, unsigned vs1, unsigned vs2,
                                 bool vm);
 uint32_t xthead_encode_vfsub_vv(unsigned vd, unsigned vs1, unsigned vs2,
                                 bool vm);
+uint32_t xthead_encode_vlbu_v(unsigned vd, unsigned base, int32_t imm, bool vm);
+uint32_t xthead_encode_vsb_v(unsigned vs3, unsigned base, int32_t imm, bool vm);
 uint32_t xthead_encode_vle64(unsigned vd, unsigned base, int32_t imm, bool vm);
 uint32_t xthead_encode_vse64(unsigned vs3, unsigned base, int32_t imm, bool vm);
 

@@ -15,6 +15,8 @@
 #define XTHEAD_OPC_TH_VMV_V_X   (0x5e000057u | XTHEAD_V_OPIVX)
 #define XTHEAD_OPC_TH_VFADD_VV  (0x00001057u)
 #define XTHEAD_OPC_TH_VFSUB_VV  (0x08001057u)
+#define XTHEAD_OPC_TH_VLBU_V    (0x00000007u)
+#define XTHEAD_OPC_TH_VSB_V     (0x00000027u)
 
 static inline uint32_t xthead_encode_reg5(unsigned reg, unsigned shift)
 {
@@ -117,6 +119,16 @@ uint32_t xthead_encode_vfsub_vv(unsigned vd, unsigned vs1, unsigned vs2,
                                 bool vm)
 {
     return xthead_encode_vv(XTHEAD_OPC_TH_VFSUB_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vlbu_v(unsigned vd, unsigned base, int32_t imm, bool vm)
+{
+    return xthead_encode_vle(XTHEAD_OPC_TH_VLBU_V, vd, base, imm, vm);
+}
+
+uint32_t xthead_encode_vsb_v(unsigned vs3, unsigned base, int32_t imm, bool vm)
+{
+    return xthead_encode_vse(XTHEAD_OPC_TH_VSB_V, vs3, base, imm, vm);
 }
 
 uint32_t xthead_encode_vle64(unsigned vd, unsigned base, int32_t imm, bool vm)
