@@ -874,34 +874,34 @@ static void tcg_out_xthead_cmp_vec(TCGContext *s, TCGType type, unsigned vece,
 
         switch (cond) {
         case TCG_COND_EQ:
-            tcg_out32(s, xthead_encode_vmseq_vi(TCG_REG_V0, imm, cmp1, false));
+            tcg_out32(s, xthead_encode_vmseq_vi(TCG_REG_V0, imm, cmp1, true));
             break;
         case TCG_COND_NE:
-            tcg_out32(s, xthead_encode_vmsne_vi(TCG_REG_V0, imm, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsne_vi(TCG_REG_V0, imm, cmp1, true));
             break;
         case TCG_COND_GT:
-            tcg_out32(s, xthead_encode_vmsgt_vi(TCG_REG_V0, imm, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsgt_vi(TCG_REG_V0, imm, cmp1, true));
             break;
         case TCG_COND_LE:
-            tcg_out32(s, xthead_encode_vmsle_vi(TCG_REG_V0, imm, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsle_vi(TCG_REG_V0, imm, cmp1, true));
             break;
         case TCG_COND_LT:
-            tcg_out32(s, xthead_encode_vmsle_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsle_vi(TCG_REG_V0, imm - 1, cmp1, true));
             break;
         case TCG_COND_GE:
-            tcg_out32(s, xthead_encode_vmsgt_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsgt_vi(TCG_REG_V0, imm - 1, cmp1, true));
             break;
         case TCG_COND_LEU:
-            tcg_out32(s, xthead_encode_vmsleu_vi(TCG_REG_V0, imm, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsleu_vi(TCG_REG_V0, imm, cmp1, true));
             break;
         case TCG_COND_GTU:
-            tcg_out32(s, xthead_encode_vmsgtu_vi(TCG_REG_V0, imm, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsgtu_vi(TCG_REG_V0, imm, cmp1, true));
             break;
         case TCG_COND_LTU:
-            tcg_out32(s, xthead_encode_vmsleu_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsleu_vi(TCG_REG_V0, imm - 1, cmp1, true));
             break;
         case TCG_COND_GEU:
-            tcg_out32(s, xthead_encode_vmsgtu_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsgtu_vi(TCG_REG_V0, imm - 1, cmp1, true));
             break;
         default:
             g_assert_not_reached();
@@ -909,34 +909,34 @@ static void tcg_out_xthead_cmp_vec(TCGContext *s, TCGType type, unsigned vece,
     } else {
         switch (cond) {
         case TCG_COND_EQ:
-            tcg_out32(s, xthead_encode_vmseq_vv(TCG_REG_V0, cmp2, cmp1, false));
+            tcg_out32(s, xthead_encode_vmseq_vv(TCG_REG_V0, cmp2, cmp1, true));
             break;
         case TCG_COND_NE:
-            tcg_out32(s, xthead_encode_vmsne_vv(TCG_REG_V0, cmp2, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsne_vv(TCG_REG_V0, cmp2, cmp1, true));
             break;
         case TCG_COND_LT:
-            tcg_out32(s, xthead_encode_vmslt_vv(TCG_REG_V0, cmp2, cmp1, false));
+            tcg_out32(s, xthead_encode_vmslt_vv(TCG_REG_V0, cmp2, cmp1, true));
             break;
         case TCG_COND_GE:
-            tcg_out32(s, xthead_encode_vmsle_vv(TCG_REG_V0, cmp1, cmp2, false));
+            tcg_out32(s, xthead_encode_vmsle_vv(TCG_REG_V0, cmp1, cmp2, true));
             break;
         case TCG_COND_GT:
-            tcg_out32(s, xthead_encode_vmslt_vv(TCG_REG_V0, cmp1, cmp2, false));
+            tcg_out32(s, xthead_encode_vmslt_vv(TCG_REG_V0, cmp1, cmp2, true));
             break;
         case TCG_COND_LE:
-            tcg_out32(s, xthead_encode_vmsle_vv(TCG_REG_V0, cmp2, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsle_vv(TCG_REG_V0, cmp2, cmp1, true));
             break;
         case TCG_COND_LTU:
-            tcg_out32(s, xthead_encode_vmsltu_vv(TCG_REG_V0, cmp2, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsltu_vv(TCG_REG_V0, cmp2, cmp1, true));
             break;
         case TCG_COND_GEU:
-            tcg_out32(s, xthead_encode_vmsleu_vv(TCG_REG_V0, cmp1, cmp2, false));
+            tcg_out32(s, xthead_encode_vmsleu_vv(TCG_REG_V0, cmp1, cmp2, true));
             break;
         case TCG_COND_GTU:
-            tcg_out32(s, xthead_encode_vmsltu_vv(TCG_REG_V0, cmp1, cmp2, false));
+            tcg_out32(s, xthead_encode_vmsltu_vv(TCG_REG_V0, cmp1, cmp2, true));
             break;
         case TCG_COND_LEU:
-            tcg_out32(s, xthead_encode_vmsleu_vv(TCG_REG_V0, cmp2, cmp1, false));
+            tcg_out32(s, xthead_encode_vmsleu_vv(TCG_REG_V0, cmp2, cmp1, true));
             break;
         default:
             g_assert_not_reached();

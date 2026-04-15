@@ -728,14 +728,17 @@ static void gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
     int dst = info->dst_reg;
     bool high64_zero = s->xmm_state[dst].high64_valid &&
                        s->xmm_state[dst].high64_zero;
+    TCGv_i64 dst_hi;
     TCGv_vec dstv;
     TCGv_vec srcv;
 
     compute_xmm_offset(&decode->op[0]);
     compute_xmm_offset(&decode->op[2]);
 
+    dst_hi = tcg_temp_new_i64();
     dstv = tcg_temp_new_vec(TCG_TYPE_V128);
     srcv = tcg_temp_new_vec(TCG_TYPE_V128);
+    tcg_gen_ld_i64(dst_hi, OP_PTR0, offsetof(ZMMReg, ZMM_Q(1)));
     tcg_gen_ld_vec(dstv, OP_PTR0, 0);
     tcg_gen_ld_vec(srcv, OP_PTR2, 0);
     switch (fast->kind) {
@@ -749,6 +752,7 @@ static void gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
         g_assert_not_reached();
     }
     tcg_gen_st_vec(dstv, OP_PTR0, 0);
+    tcg_gen_st_i64(dst_hi, OP_PTR0, offsetof(ZMMReg, ZMM_Q(1)));
 
     s->cur_sse_mode = SSE_TR_ORIG;
     s->xmm_state[dst].low64_domain = XMM_DOMAIN_UNKNOWN;
