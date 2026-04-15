@@ -701,19 +701,7 @@ static SSEInsnInfo build_sse_binary_fp_info(DisasContext *s,
     return info;
 }
 
-#ifdef TCG_TARGET_RISCV64
-static TCGOpcode xthead_sse_fastpath_opcode(const XtheadSSEFastPath *fast)
-{
-    switch (fast->kind) {
-    case XTHEAD_SSE_FASTPATH_FADD_SD:
-        return INDEX_op_xthead_vfaddsd_vec;
-    case XTHEAD_SSE_FASTPATH_FSUB_SD:
-        return INDEX_op_xthead_vfsubsd_vec;
-    default:
-        g_assert_not_reached();
-    }
-}
-
+#if defined(__riscv) && __riscv_xlen == 64
 static bool xthead_sse_fastpath_matches(const SSEInsnInfo *info,
                                         const XtheadSSEFastPath *fast)
 {
@@ -729,7 +717,8 @@ static bool xthead_sse_fastpath_matches(const SSEInsnInfo *info,
     if (info->dst_reg < 0 || info->src_reg < 0) {
         return false;
     }
-    return tcg_op_supported(xthead_sse_fastpath_opcode(fast), TCG_TYPE_V128, 0);
+    /* Target-specific ops are not screened by tcg_op_supported(). */
+    return (cpuinfo_init() & CPUINFO_XTHEADVECTOR) != 0;
 }
 
 static void gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,

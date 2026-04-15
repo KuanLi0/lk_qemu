@@ -19,6 +19,9 @@
 #include "qemu/osdep.h"
 
 #include "qemu/host-utils.h"
+#if defined(__riscv) && __riscv_xlen == 64
+#include "host/cpuinfo.h"
+#endif
 #include "cpu.h"
 #include "accel/tcg/cpu-mmu-index.h"
 #include "exec/translation-block.h"

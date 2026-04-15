@@ -287,7 +287,7 @@ void tcg_gen_stl_vec(TCGv_vec r, TCGv_ptr b, TCGArg o, TCGType low_type)
     vec_gen_3(INDEX_op_st_vec, low_type, 0, ri, bi, o);
 }
 
-#ifdef TCG_TARGET_RISCV64
+#if defined(__riscv) && __riscv_xlen == 64
 void tcg_gen_xthead_vfaddsd_vec(TCGv_vec r, TCGv_vec a, TCGv_vec b)
 {
     TCGArg ri = tcgv_vec_arg(r);

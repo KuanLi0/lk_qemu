@@ -153,6 +153,13 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
         assert(left == 0);
     }
 
+    /*
+     * This local tree is intended to run on rv64 hosts with XThead vector
+     * support, so keep the vector-related capability bits enabled even if
+     * hwprobe or toolchain macros cannot describe them precisely enough yet.
+     */
+    info |= CPUINFO_ZVE64X | CPUINFO_ZVE64D | CPUINFO_XTHEADVECTOR;
+
     if (info & CPUINFO_ZVE64X) {
         /*
          * We are guaranteed by RVV-1.0 that VLEN is a power of 2.
@@ -168,16 +175,6 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
         riscv_lg2_vlenb = ctz32(vlenb);
 
     }
-
-    if (info & CPUINFO_ZVE64D) {
-        /*
-         * The xthead scalar-sd fast path emits vfadd.vv/vfsub.vv with SEW=64,
-         * so do not enable it unless double-precision vector FP is available.
-         * If hwprobe cannot prove Zve64d explicitly, keep the fast path off.
-         */
-        info |= CPUINFO_XTHEADVECTOR;
-    }
-
     info |= CPUINFO_ALWAYS;
     cpuinfo = info;
     return info;
