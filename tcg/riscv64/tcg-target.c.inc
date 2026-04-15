@@ -776,6 +776,175 @@ static void tcg_out_xthead_vfsub_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
     tcg_out32(s, xthead_encode_vfsub_vv(vd, vs1, vs2, true));
 }
 
+static void tcg_out_xthead_vadd_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                      TCGArg vi1, int c_vi1)
+{
+    if (c_vi1) {
+        tcg_out32(s, xthead_encode_vadd_vi(vd, vi1, vs2, true));
+    } else {
+        tcg_out32(s, xthead_encode_vadd_vv(vd, vi1, vs2, true));
+    }
+}
+
+static void tcg_out_xthead_vsub_vv_vi(TCGContext *s, TCGReg vd, TCGArg lhs,
+                                      TCGReg rhs, int c_lhs)
+{
+    if (c_lhs) {
+        tcg_out32(s, xthead_encode_vrsub_vi(vd, lhs, rhs, true));
+    } else {
+        tcg_out32(s, xthead_encode_vsub_vv(vd, rhs, lhs, true));
+    }
+}
+
+static void tcg_out_xthead_vand_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                      TCGArg vi1, int c_vi1)
+{
+    if (c_vi1) {
+        tcg_out32(s, xthead_encode_vand_vi(vd, vi1, vs2, true));
+    } else {
+        tcg_out32(s, xthead_encode_vand_vv(vd, vi1, vs2, true));
+    }
+}
+
+static void tcg_out_xthead_vor_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                     TCGArg vi1, int c_vi1)
+{
+    if (c_vi1) {
+        tcg_out32(s, xthead_encode_vor_vi(vd, vi1, vs2, true));
+    } else {
+        tcg_out32(s, xthead_encode_vor_vv(vd, vi1, vs2, true));
+    }
+}
+
+static void tcg_out_xthead_vxor_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                      TCGArg vi1, int c_vi1)
+{
+    if (c_vi1) {
+        tcg_out32(s, xthead_encode_vxor_vi(vd, vi1, vs2, true));
+    } else {
+        tcg_out32(s, xthead_encode_vxor_vv(vd, vi1, vs2, true));
+    }
+}
+
+static void tcg_out_xthead_vshifti(TCGContext *s, TCGOpcode opc,
+                                   TCGReg dst, TCGReg src, unsigned imm)
+{
+    if (imm < 32) {
+        switch (opc) {
+        case INDEX_op_shli_vec:
+            tcg_out32(s, xthead_encode_vsll_vi(dst, imm, src, true));
+            return;
+        case INDEX_op_shri_vec:
+            tcg_out32(s, xthead_encode_vsrl_vi(dst, imm, src, true));
+            return;
+        case INDEX_op_sari_vec:
+            tcg_out32(s, xthead_encode_vsra_vi(dst, imm, src, true));
+            return;
+        default:
+            g_assert_not_reached();
+        }
+    }
+
+    tcg_out_movi(s, TCG_TYPE_I32, TCG_REG_TMP0, imm);
+    switch (opc) {
+    case INDEX_op_shli_vec:
+        tcg_out32(s, xthead_encode_vsll_vx(dst, TCG_REG_TMP0, src, true));
+        return;
+    case INDEX_op_shri_vec:
+        tcg_out32(s, xthead_encode_vsrl_vx(dst, TCG_REG_TMP0, src, true));
+        return;
+    case INDEX_op_sari_vec:
+        tcg_out32(s, xthead_encode_vsra_vx(dst, TCG_REG_TMP0, src, true));
+        return;
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static void tcg_out_xthead_cmp_vec(TCGContext *s, TCGType type, unsigned vece,
+                                   TCGCond cond, TCGReg ret,
+                                   TCGReg cmp1, TCGReg cmp2, bool c_cmp2)
+{
+    set_vtype_len_sew(s, type, vece);
+
+    if (c_cmp2) {
+        int32_t imm = cmp2;
+
+        switch (cond) {
+        case TCG_COND_EQ:
+            tcg_out32(s, xthead_encode_vmseq_vi(TCG_REG_V0, imm, cmp1, false));
+            break;
+        case TCG_COND_NE:
+            tcg_out32(s, xthead_encode_vmsne_vi(TCG_REG_V0, imm, cmp1, false));
+            break;
+        case TCG_COND_GT:
+            tcg_out32(s, xthead_encode_vmsgt_vi(TCG_REG_V0, imm, cmp1, false));
+            break;
+        case TCG_COND_LE:
+            tcg_out32(s, xthead_encode_vmsle_vi(TCG_REG_V0, imm, cmp1, false));
+            break;
+        case TCG_COND_LT:
+            tcg_out32(s, xthead_encode_vmsle_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            break;
+        case TCG_COND_GE:
+            tcg_out32(s, xthead_encode_vmsgt_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            break;
+        case TCG_COND_LEU:
+            tcg_out32(s, xthead_encode_vmsleu_vi(TCG_REG_V0, imm, cmp1, false));
+            break;
+        case TCG_COND_GTU:
+            tcg_out32(s, xthead_encode_vmsgtu_vi(TCG_REG_V0, imm, cmp1, false));
+            break;
+        case TCG_COND_LTU:
+            tcg_out32(s, xthead_encode_vmsleu_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            break;
+        case TCG_COND_GEU:
+            tcg_out32(s, xthead_encode_vmsgtu_vi(TCG_REG_V0, imm - 1, cmp1, false));
+            break;
+        default:
+            g_assert_not_reached();
+        }
+    } else {
+        switch (cond) {
+        case TCG_COND_EQ:
+            tcg_out32(s, xthead_encode_vmseq_vv(TCG_REG_V0, cmp2, cmp1, false));
+            break;
+        case TCG_COND_NE:
+            tcg_out32(s, xthead_encode_vmsne_vv(TCG_REG_V0, cmp2, cmp1, false));
+            break;
+        case TCG_COND_LT:
+            tcg_out32(s, xthead_encode_vmslt_vv(TCG_REG_V0, cmp2, cmp1, false));
+            break;
+        case TCG_COND_GE:
+            tcg_out32(s, xthead_encode_vmsle_vv(TCG_REG_V0, cmp1, cmp2, false));
+            break;
+        case TCG_COND_GT:
+            tcg_out32(s, xthead_encode_vmslt_vv(TCG_REG_V0, cmp1, cmp2, false));
+            break;
+        case TCG_COND_LE:
+            tcg_out32(s, xthead_encode_vmsle_vv(TCG_REG_V0, cmp2, cmp1, false));
+            break;
+        case TCG_COND_LTU:
+            tcg_out32(s, xthead_encode_vmsltu_vv(TCG_REG_V0, cmp2, cmp1, false));
+            break;
+        case TCG_COND_GEU:
+            tcg_out32(s, xthead_encode_vmsleu_vv(TCG_REG_V0, cmp1, cmp2, false));
+            break;
+        case TCG_COND_GTU:
+            tcg_out32(s, xthead_encode_vmsltu_vv(TCG_REG_V0, cmp1, cmp2, false));
+            break;
+        case TCG_COND_LEU:
+            tcg_out32(s, xthead_encode_vmsleu_vv(TCG_REG_V0, cmp2, cmp1, false));
+            break;
+        default:
+            g_assert_not_reached();
+        }
+    }
+
+    tcg_out_xthead_vmv_v_i(s, ret, 0);
+    tcg_out32(s, xthead_encode_vmerge_vim(ret, -1, ret, false));
+}
+
 static void tcg_out_xthead_vlbu_v(TCGContext *s, TCGReg vd, TCGReg base)
 {
     tcg_out32(s, xthead_encode_vlbu_v(vd, base, 0, true));
@@ -2830,43 +2999,32 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         switch (opc) {
         case INDEX_op_add_vec:
             set_vtype_len_sew(s, type, vece);
-            tcg_out_opc_vv_vi(s, OPC_VADD_VV, OPC_VADD_VI, a0, a1, a2, c2);
+            tcg_out_xthead_vadd_vv_vi(s, a0, a1, a2, c2);
             return;
         case INDEX_op_sub_vec:
             set_vtype_len_sew(s, type, vece);
-            if (const_args[1]) {
-                tcg_out_opc_vi(s, OPC_VRSUB_VI, a0, a2, a1);
-            } else {
-                tcg_out_opc_vv(s, OPC_VSUB_VV, a0, a1, a2);
-            }
+            tcg_out_xthead_vsub_vv_vi(s, a0, a1, a2, const_args[1]);
             return;
         case INDEX_op_and_vec:
             set_vtype_len_sew(s, type, MO_8);
-            tcg_out_opc_vv_vi(s, OPC_VAND_VV, OPC_VAND_VI, a0, a1, a2, c2);
+            tcg_out_xthead_vand_vv_vi(s, a0, a1, a2, c2);
             return;
         case INDEX_op_or_vec:
             set_vtype_len_sew(s, type, MO_8);
-            tcg_out_opc_vv_vi(s, OPC_VOR_VV, OPC_VOR_VI, a0, a1, a2, c2);
+            tcg_out_xthead_vor_vv_vi(s, a0, a1, a2, c2);
             return;
         case INDEX_op_xor_vec:
             set_vtype_len_sew(s, type, MO_8);
-            tcg_out_opc_vv_vi(s, OPC_VXOR_VV, OPC_VXOR_VI, a0, a1, a2, c2);
+            tcg_out_xthead_vxor_vv_vi(s, a0, a1, a2, c2);
             return;
         case INDEX_op_shli_vec:
-            set_vtype_len_sew(s, type, vece);
-            tcg_out_vshifti(s, OPC_VSLL_VI, OPC_VSLL_VX, a0, a1, a2);
-            return;
         case INDEX_op_shri_vec:
-            set_vtype_len_sew(s, type, vece);
-            tcg_out_vshifti(s, OPC_VSRL_VI, OPC_VSRL_VX, a0, a1, a2);
-            return;
         case INDEX_op_sari_vec:
             set_vtype_len_sew(s, type, vece);
-            tcg_out_vshifti(s, OPC_VSRA_VI, OPC_VSRA_VX, a0, a1, a2);
+            tcg_out_xthead_vshifti(s, opc, a0, a1, a2);
             return;
         case INDEX_op_cmp_vec:
-            tcg_out_cmpsel(s, type, vece, args[3], a0, a1, a2, c2,
-                           -1, true, 0, true);
+            tcg_out_xthead_cmp_vec(s, type, vece, args[3], a0, a1, a2, c2);
             return;
         default:
             break;
