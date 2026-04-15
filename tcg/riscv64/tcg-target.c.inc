@@ -51,9 +51,6 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
 };
 #endif
 
-static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg);
-static void tcg_out_movi(TCGContext *s, TCGType type, TCGReg rd,
-                         tcg_target_long val);
 static void init_setting_vtype(TCGContext *s);
 
 static const int tcg_target_reg_alloc_order[] = {
@@ -739,44 +736,6 @@ static void tcg_out_xthead_vfsub_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
                                     TCGReg vs2)
 {
     tcg_out32(s, xthead_encode_vfsub_vv(vd, vs1, vs2, true));
-}
-
-static void tcg_out_xthead_vle64(TCGContext *s, TCGReg vd, TCGReg base,
-                                 intptr_t offset)
-{
-    tcg_debug_assert(vd >= TCG_REG_V0);
-    tcg_debug_assert(base < TCG_REG_V0);
-
-    if (offset) {
-        tcg_debug_assert(base != TCG_REG_ZERO);
-        if (offset == sextreg(offset, 0, 12)) {
-            tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, base, offset);
-        } else {
-            tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_TMP0, offset);
-            tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, TCG_REG_TMP0, base);
-        }
-        base = TCG_REG_TMP0;
-    }
-    tcg_out32(s, xthead_encode_vle64(vd, base, 0, true));
-}
-
-static void tcg_out_xthead_vse64(TCGContext *s, TCGReg vs3, TCGReg base,
-                                 intptr_t offset)
-{
-    tcg_debug_assert(vs3 >= TCG_REG_V0);
-    tcg_debug_assert(base < TCG_REG_V0);
-
-    if (offset) {
-        tcg_debug_assert(base != TCG_REG_ZERO);
-        if (offset == sextreg(offset, 0, 12)) {
-            tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, base, offset);
-        } else {
-            tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_TMP0, offset);
-            tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, TCG_REG_TMP0, base);
-        }
-        base = TCG_REG_TMP0;
-    }
-    tcg_out32(s, xthead_encode_vse64(vs3, base, 0, true));
 }
 
 static void tcg_out_xthead_vconfig_f64_scalar(TCGContext *s)
