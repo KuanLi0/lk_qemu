@@ -53,6 +53,11 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
 
 static void init_setting_vtype(TCGContext *s);
 
+static inline bool use_xthead_vector_backend(void)
+{
+    return (cpuinfo & CPUINFO_XTHEADVECTOR) != 0;
+}
+
 static const int tcg_target_reg_alloc_order[] = {
     /* Call saved registers */
     /* TCG_REG_S0 reserved for TCG_AREG0 */
@@ -726,6 +731,21 @@ static void tcg_out_xthead_vsetvli(TCGContext *s, TCGReg rd, TCGReg rs1,
     tcg_out32(s, xthead_encode_vsetvli(rd, rs1, vtypei));
 }
 
+static void tcg_out_xthead_vmv_v_v(TCGContext *s, TCGReg vd, TCGReg vs2)
+{
+    tcg_out32(s, xthead_encode_vmv_v_v(vd, vs2, true));
+}
+
+static void tcg_out_xthead_vmv_v_x(TCGContext *s, TCGReg vd, TCGReg rs1)
+{
+    tcg_out32(s, xthead_encode_vmv_v_x(vd, rs1, true));
+}
+
+static void tcg_out_xthead_vmv_v_i(TCGContext *s, TCGReg vd, int32_t imm)
+{
+    tcg_out32(s, xthead_encode_vmv_v_i(vd, imm, true));
+}
+
 static void tcg_out_xthead_vfadd_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
                                     TCGReg vs2)
 {
@@ -776,10 +796,17 @@ typedef struct VsetCache {
 } VsetCache;
 
 static VsetCache riscv_vset_cache[3][4];
+static VsetCache xthead_vset_cache[3][4];
 
 static void set_vtype(TCGContext *s, TCGType type, MemOp vsew)
 {
-    const VsetCache *p = &riscv_vset_cache[type - TCG_TYPE_V64][vsew];
+    const VsetCache *p;
+
+    if (use_xthead_vector_backend()) {
+        p = &xthead_vset_cache[type - TCG_TYPE_V64][vsew];
+    } else {
+        p = &riscv_vset_cache[type - TCG_TYPE_V64][vsew];
+    }
 
     s->riscv_cur_type = type;
     s->riscv_cur_vsew = vsew;
@@ -822,7 +849,10 @@ static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg)
     case TCG_TYPE_V64:
     case TCG_TYPE_V128:
     case TCG_TYPE_V256:
-        {
+        if (use_xthead_vector_backend()) {
+            set_vtype_len(s, type);
+            tcg_out_xthead_vmv_v_v(s, ret, arg);
+        } else {
             int lmul = type - riscv_lg2_vlenb;
             int nf = 1 << MAX(lmul, 0);
             tcg_out_opc_vi(s, OPC_VMVNR_V, ret, arg, nf - 1);
@@ -1039,6 +1069,30 @@ static void tcg_out_vec_ldst(TCGContext *s, RISCVInsn opc, TCGReg data,
     tcg_out32(s, encode_v(opc, data, addr, 0, true));
 }
 
+static void tcg_out_xthead_vec_ldst(TCGContext *s, bool is_load, TCGReg data,
+                                    TCGReg addr, intptr_t offset)
+{
+    tcg_debug_assert(data >= TCG_REG_V0);
+    tcg_debug_assert(addr < TCG_REG_V0);
+
+    if (offset) {
+        tcg_debug_assert(addr != TCG_REG_ZERO);
+        if (offset == sextreg(offset, 0, 12)) {
+            tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, addr, offset);
+        } else {
+            tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_TMP0, offset);
+            tcg_out_opc_reg(s, OPC_ADD, TCG_REG_TMP0, TCG_REG_TMP0, addr);
+        }
+        addr = TCG_REG_TMP0;
+    }
+
+    if (is_load) {
+        tcg_out32(s, xthead_encode_vle64(data, addr, 0, true));
+    } else {
+        tcg_out32(s, xthead_encode_vse64(data, addr, 0, true));
+    }
+}
+
 static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg arg,
                        TCGReg arg1, intptr_t arg2)
 {
@@ -1054,7 +1108,11 @@ static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg arg,
     case TCG_TYPE_V64:
     case TCG_TYPE_V128:
     case TCG_TYPE_V256:
-        if (type >= riscv_lg2_vlenb) {
+        if (use_xthead_vector_backend()) {
+            set_vtype_len_sew(s, type, MO_64);
+            tcg_out_xthead_vec_ldst(s, true, arg, arg1, arg2);
+            break;
+        } else if (type >= riscv_lg2_vlenb) {
             static const RISCVInsn whole_reg_ld[] = {
                 OPC_VL1RE64_V, OPC_VL2RE64_V, OPC_VL4RE64_V, OPC_VL8RE64_V
             };
@@ -1093,7 +1151,11 @@ static void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg,
     case TCG_TYPE_V64:
     case TCG_TYPE_V128:
     case TCG_TYPE_V256:
-        if (type >= riscv_lg2_vlenb) {
+        if (use_xthead_vector_backend()) {
+            set_vtype_len_sew(s, type, MO_64);
+            tcg_out_xthead_vec_ldst(s, false, arg, arg1, arg2);
+            break;
+        } else if (type >= riscv_lg2_vlenb) {
             static const RISCVInsn whole_reg_st[] = {
                 OPC_VS1R_V, OPC_VS2R_V, OPC_VS4R_V, OPC_VS8R_V
             };
@@ -1131,7 +1193,11 @@ static bool tcg_out_dup_vec(TCGContext *s, TCGType type, unsigned vece,
                             TCGReg dst, TCGReg src)
 {
     set_vtype_len_sew(s, type, vece);
-    tcg_out_opc_vx(s, OPC_VMV_V_X, dst, 0, src);
+    if (use_xthead_vector_backend()) {
+        tcg_out_xthead_vmv_v_x(s, dst, src);
+    } else {
+        tcg_out_opc_vx(s, OPC_VMV_V_X, dst, 0, src);
+    }
     return true;
 }
 
@@ -1141,7 +1207,11 @@ static bool tcg_out_dupm_vec(TCGContext *s, TCGType type, unsigned vece,
     /* Note set_vtype* may clobber TMP0, so do that first. */
     set_vtype_len_sew(s, type, vece);
     tcg_out_ld(s, TCG_TYPE_REG, TCG_REG_TMP0, base, offset);
-    tcg_out_opc_vx(s, OPC_VMV_V_X, dst, 0, TCG_REG_TMP0);
+    if (use_xthead_vector_backend()) {
+        tcg_out_xthead_vmv_v_x(s, dst, TCG_REG_TMP0);
+    } else {
+        tcg_out_opc_vx(s, OPC_VMV_V_X, dst, 0, TCG_REG_TMP0);
+    }
     return true;
 }
 
@@ -1159,10 +1229,18 @@ static void tcg_out_dupi_vec(TCGContext *s, TCGType type, unsigned vece,
     }
 
     if (arg >= -16 && arg < 16) {
-        tcg_out_opc_vi(s, OPC_VMV_V_I, dst, 0, arg);
+        if (use_xthead_vector_backend()) {
+            tcg_out_xthead_vmv_v_i(s, dst, arg);
+        } else {
+            tcg_out_opc_vi(s, OPC_VMV_V_I, dst, 0, arg);
+        }
     } else {
         tcg_out_movi(s, TCG_TYPE_I64, TCG_REG_TMP0, arg);
-        tcg_out_opc_vx(s, OPC_VMV_V_X, dst, 0, TCG_REG_TMP0);
+        if (use_xthead_vector_backend()) {
+            tcg_out_xthead_vmv_v_x(s, dst, TCG_REG_TMP0);
+        } else {
+            tcg_out_opc_vx(s, OPC_VMV_V_X, dst, 0, TCG_REG_TMP0);
+        }
     }
 }
 
@@ -3111,6 +3189,26 @@ static void probe_frac_lmul(void)
     }
 }
 
+static void init_xthead_vset_cache_1(TCGType type, MemOp vsew)
+{
+    VsetCache *p = &xthead_vset_cache[type - TCG_TYPE_V64][vsew];
+    unsigned avl = tcg_type_size(type) >> vsew;
+    int lmul = MAX(type - riscv_lg2_vlenb, 0);
+    unsigned vtype = xthead_encode_vtypei(false, false, vsew, lmul);
+
+    p->movi_insn = encode_i(OPC_ADDI, TCG_REG_TMP0, TCG_REG_ZERO, avl);
+    p->vset_insn = xthead_encode_vsetvli(TCG_REG_ZERO, TCG_REG_TMP0, vtype);
+}
+
+static void init_xthead_vset_cache(void)
+{
+    for (TCGType t = TCG_TYPE_V64; t <= TCG_TYPE_V256; t++) {
+        for (MemOp e = MO_8; e <= MO_64; e++) {
+            init_xthead_vset_cache_1(t, e);
+        }
+    }
+}
+
 static void tcg_target_init(TCGContext *s)
 {
     tcg_target_available_regs[TCG_TYPE_I32] = 0xffffffff;
@@ -3139,7 +3237,7 @@ static void tcg_target_init(TCGContext *s)
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_GP);
     tcg_regset_set_reg(s->reserved_regs, TCG_REG_TP);
 
-    if (cpuinfo & CPUINFO_ZVE64X) {
+    if (cpuinfo & (CPUINFO_ZVE64X | CPUINFO_XTHEADVECTOR)) {
         switch (riscv_lg2_vlenb) {
         case TCG_TYPE_V64:
             tcg_target_available_regs[TCG_TYPE_V64] = ALL_VECTOR_REGS;
@@ -3162,7 +3260,11 @@ static void tcg_target_init(TCGContext *s)
             break;
         }
         tcg_regset_set_reg(s->reserved_regs, TCG_REG_V0);
-        probe_frac_lmul();
+        if (use_xthead_vector_backend()) {
+            init_xthead_vset_cache();
+        } else {
+            probe_frac_lmul();
+        }
     }
 }
 

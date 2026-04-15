@@ -16,11 +16,18 @@ uint32_t xthead_encode_vtypei(bool vta, bool vma, unsigned vsew,
 uint32_t xthead_encode_vsetvli(unsigned rd, unsigned rs1, uint32_t vtypei);
 uint32_t xthead_encode_vv(uint32_t opc_fixed, unsigned vd, unsigned vs1,
                           unsigned vs2, bool vm);
+uint32_t xthead_encode_vx(uint32_t opc_fixed, unsigned vd, unsigned rs1,
+                          unsigned vs2, bool vm);
+uint32_t xthead_encode_vi(uint32_t opc_fixed, unsigned vd, int32_t imm,
+                          unsigned vs2, bool vm);
 uint32_t xthead_encode_vle(uint32_t opc_fixed, unsigned vd, unsigned base,
                            int32_t imm, bool vm);
 uint32_t xthead_encode_vse(uint32_t opc_fixed, unsigned vs3, unsigned base,
                            int32_t imm, bool vm);
 
+uint32_t xthead_encode_vmv_v_v(unsigned vd, unsigned vs2, bool vm);
+uint32_t xthead_encode_vmv_v_x(unsigned vd, unsigned rs1, bool vm);
+uint32_t xthead_encode_vmv_v_i(unsigned vd, int32_t imm, bool vm);
 uint32_t xthead_encode_vfadd_vv(unsigned vd, unsigned vs1, unsigned vs2,
                                 bool vm);
 uint32_t xthead_encode_vfsub_vv(unsigned vd, unsigned vs1, unsigned vs2,

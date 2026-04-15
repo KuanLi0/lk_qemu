@@ -15,9 +15,9 @@
 #define TCG_TARGET_HAS_tst              0
 
 /* vector instructions */
-#define TCG_TARGET_HAS_v64              (cpuinfo & CPUINFO_ZVE64X)
-#define TCG_TARGET_HAS_v128             (cpuinfo & CPUINFO_ZVE64X)
-#define TCG_TARGET_HAS_v256             (cpuinfo & CPUINFO_ZVE64X)
+#define TCG_TARGET_HAS_v64              (cpuinfo & (CPUINFO_ZVE64X | CPUINFO_XTHEADVECTOR))
+#define TCG_TARGET_HAS_v128             (cpuinfo & (CPUINFO_ZVE64X | CPUINFO_XTHEADVECTOR))
+#define TCG_TARGET_HAS_v256             (cpuinfo & (CPUINFO_ZVE64X | CPUINFO_XTHEADVECTOR))
 #define TCG_TARGET_HAS_andc_vec         0
 #define TCG_TARGET_HAS_orc_vec          0
 #define TCG_TARGET_HAS_nand_vec         0
