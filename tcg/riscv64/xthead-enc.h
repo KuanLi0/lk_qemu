@@ -25,7 +25,7 @@ uint32_t xthead_encode_vle(uint32_t opc_fixed, unsigned vd, unsigned base,
 uint32_t xthead_encode_vse(uint32_t opc_fixed, unsigned vs3, unsigned base,
                            int32_t imm, bool vm);
 
-uint32_t xthead_encode_vmv_v_v(unsigned vd, unsigned vs2, bool vm);
+uint32_t xthead_encode_vmv_v_v(unsigned vd, unsigned vs1, bool vm);
 uint32_t xthead_encode_vmv_v_x(unsigned vd, unsigned rs1, bool vm);
 uint32_t xthead_encode_vmv_v_i(unsigned vd, int32_t imm, bool vm);
 uint32_t xthead_encode_vfadd_vv(unsigned vd, unsigned vs1, unsigned vs2,
