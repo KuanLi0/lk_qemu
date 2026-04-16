@@ -889,11 +889,6 @@ static void tcg_out_fmv_w_x(TCGContext *s, XtheadFReg frd, TCGReg rs1)
     tcg_out_opc_fp_r(s, OPC_RISC_FMV_S_X, frd, rs1, 0);
 }
 
-static void tcg_out_xthead_vfmv_s_f(TCGContext *s, TCGReg vd, XtheadFReg frs1)
-{
-    tcg_out32(s, xthead_encode_vfmv_s_f(vd, frs1));
-}
-
 typedef void (*xthead_emit_frm_fn)(TCGContext *s, unsigned frm,
                                    const void *opaque);
 
@@ -953,8 +948,15 @@ static void tcg_out_xthead_lane0_mask(TCGContext *s)
      * Build v0 from scalar 1 in element 0. For mask consumers, this gives
      * bit0 = 1 and bit1+ = 0, so lane 0 is active and lane 1 stays masked.
      */
-    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP1, TCG_REG_ZERO, 1);
-    tcg_out_xthead_vmv_s_x(s, TCG_REG_V0, TCG_REG_TMP1);
+    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP2, TCG_REG_ZERO, 1);
+    tcg_out_xthead_vmv_s_x(s, TCG_REG_V0, TCG_REG_TMP2);
+}
+
+static void tcg_out_xthead_insert_lane0_x(TCGContext *s, TCGReg dst,
+                                          TCGReg scalar)
+{
+    tcg_out_xthead_lane0_mask(s);
+    tcg_out32(s, xthead_encode_vslide1up_vx(dst, scalar, dst, false));
 }
 
 static void tcg_out_xthead_vadd_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
@@ -1291,7 +1293,8 @@ static void tcg_out_xthead_cvtps2pd(TCGContext *s, TCGReg dst, TCGReg src_ptr)
 
     /* v0 is reserved from RA, so use it as a private construction scratch. */
     tcg_out_xthead_vmv_v_i(s, TCG_REG_V0, 0);
-    tcg_out_xthead_vfmv_s_f(s, TCG_REG_V0, XTHEAD_FT1);
+    tcg_out_fmv_x_d(s, TCG_REG_TMP2, XTHEAD_FT1);
+    tcg_out_xthead_vmv_s_x(s, TCG_REG_V0, TCG_REG_TMP2);
     tcg_out_fmv_x_d(s, TCG_REG_TMP1, XTHEAD_FT0);
     tcg_out32(s, xthead_encode_vslide1up_vx(dst, TCG_REG_TMP1, TCG_REG_V0,
                                             true));
@@ -1316,7 +1319,8 @@ static void tcg_out_xthead_cvtpd2ps(TCGContext *s, TCGReg dst,
                                (const void *)(uintptr_t)src_ptr);
 
     tcg_out_xthead_vmv_v_i(s, TCG_REG_V0, 0);
-    tcg_out_xthead_vfmv_s_f(s, TCG_REG_V0, XTHEAD_FT1);
+    tcg_out_fmv_x_w(s, TCG_REG_TMP2, XTHEAD_FT1);
+    tcg_out_xthead_vmv_s_x(s, TCG_REG_V0, TCG_REG_TMP2);
     tcg_out_fmv_x_w(s, TCG_REG_TMP1, XTHEAD_FT0);
     tcg_out32(s, xthead_encode_vslide1up_vx(dst, TCG_REG_TMP1, TCG_REG_V0,
                                             true));
@@ -1331,7 +1335,8 @@ static void tcg_out_xthead_cvtss2sd(TCGContext *s, TCGReg dst,
     set_vtype_len_sew(s, TCG_TYPE_V128, MO_64);
     tcg_out_flw(s, XTHEAD_FT0, src_ptr, 0);
     tcg_out_fcvt_d_s(s, XTHEAD_FT0, XTHEAD_FT0);
-    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT0);
+    tcg_out_fmv_x_d(s, TCG_REG_TMP1, XTHEAD_FT0);
+    tcg_out_xthead_insert_lane0_x(s, dst, TCG_REG_TMP1);
 }
 
 static void tcg_out_xthead_cvtsd2ss(TCGContext *s, TCGReg dst, TCGReg pass,
@@ -1345,7 +1350,8 @@ static void tcg_out_xthead_cvtsd2ss(TCGContext *s, TCGReg dst, TCGReg pass,
     set_vtype_len_sew(s, TCG_TYPE_V128, MO_32);
     tcg_out_fld(s, XTHEAD_FT0, src_ptr, 0);
     tcg_out_xthead_with_x86_rm(s, x86_rm, xthead_emit_fcvt_s_d, &op);
-    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT0);
+    tcg_out_fmv_x_w(s, TCG_REG_TMP1, XTHEAD_FT0);
+    tcg_out_xthead_insert_lane0_x(s, dst, TCG_REG_TMP1);
 }
 
 static void tcg_out_xthead_cvtsi2sd(TCGContext *s, TCGReg dst, TCGReg pass,
@@ -1362,7 +1368,8 @@ static void tcg_out_xthead_cvtsi2sd(TCGContext *s, TCGReg dst, TCGReg pass,
     }
     set_vtype_len_sew(s, TCG_TYPE_V128, MO_64);
     tcg_out_xthead_with_x86_rm(s, x86_rm, xthead_emit_fcvt_d_int, &op);
-    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT0);
+    tcg_out_fmv_x_d(s, TCG_REG_TMP1, XTHEAD_FT0);
+    tcg_out_xthead_insert_lane0_x(s, dst, TCG_REG_TMP1);
 }
 
 static void tcg_out_xthead_roundss_rm(TCGContext *s, unsigned frm,
@@ -1383,7 +1390,8 @@ static void tcg_out_xthead_roundss(TCGContext *s, TCGReg dst, TCGReg pass,
     set_vtype_len_sew(s, TCG_TYPE_V128, MO_32);
     tcg_out_xthead_with_x86_rm(s, x86_rm, tcg_out_xthead_roundss_rm,
                                (const void *)(uintptr_t)src_ptr);
-    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT3);
+    tcg_out_fmv_x_w(s, TCG_REG_TMP1, XTHEAD_FT3);
+    tcg_out_xthead_insert_lane0_x(s, dst, TCG_REG_TMP1);
 }
 
 typedef struct VsetCache {
