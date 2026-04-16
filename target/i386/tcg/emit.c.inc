@@ -908,8 +908,22 @@ static bool emit_xthead_cvtsi2sd(DisasContext *s, X86DecodedInsn *decode,
                                  TCGv_vec passv)
 {
     int dst = decode->op[0].n;
+    TCGv_i64 src64 = tcg_temp_new_i64();
 
-    tcg_gen_xthead_cvtsi2sd_vec(passv, passv, s->T1,
+#ifdef TARGET_X86_64
+    if (decode->op[2].ot == MO_64) {
+        tcg_gen_mov_i64(src64, s->T1);
+    } else {
+        TCGv_i32 src32 = tcg_temp_new_i32();
+
+        tcg_gen_trunc_tl_i32(src32, s->T1);
+        tcg_gen_extu_i32_i64(src64, src32);
+    }
+#else
+    tcg_gen_extu_i32_i64(src64, s->T1);
+#endif
+
+    tcg_gen_xthead_cvtsi2sd_vec(passv, passv, src64,
                                 gen_xthead_x86_rm_from_mxcsr(),
                                 decode->op[2].ot == MO_64);
     tcg_gen_st_vec(passv, OP_PTR0, 0);
