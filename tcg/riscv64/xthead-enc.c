@@ -14,6 +14,7 @@
 #define XTHEAD_OPC_TH_VMV_V_V   (0x5e000057u | XTHEAD_V_OPIVV)
 #define XTHEAD_OPC_TH_VMV_V_I   (0x5e000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VMV_V_X   (0x5e000057u | XTHEAD_V_OPIVX)
+#define XTHEAD_OPC_TH_VMV_S_X   (0x42006057u)
 #define XTHEAD_OPC_TH_VMERGE_VIM (0x5c000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VADD_VV   (0x00000057u | XTHEAD_V_OPIVV)
 #define XTHEAD_OPC_TH_VADD_VI   (0x00000057u | XTHEAD_V_OPIVI)
@@ -137,6 +138,13 @@ uint32_t xthead_encode_vmv_v_x(unsigned vd, unsigned rs1, bool vm)
 uint32_t xthead_encode_vmv_v_i(unsigned vd, int32_t imm, bool vm)
 {
     return xthead_encode_vi(XTHEAD_OPC_TH_VMV_V_I, vd, imm, 0, vm);
+}
+
+uint32_t xthead_encode_vmv_s_x(unsigned vd, unsigned rs1)
+{
+    return XTHEAD_OPC_TH_VMV_S_X |
+           xthead_encode_reg5(vd, 7) |
+           xthead_encode_reg5(rs1, 15);
 }
 
 uint32_t xthead_encode_vadd_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)

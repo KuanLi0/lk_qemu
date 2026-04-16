@@ -766,14 +766,19 @@ static void tcg_out_xthead_vmv_v_i(TCGContext *s, TCGReg vd, int32_t imm)
     tcg_out32(s, xthead_encode_vmv_v_i(vd, imm, true));
 }
 
+static void tcg_out_xthead_vmv_s_x(TCGContext *s, TCGReg vd, TCGReg rs1)
+{
+    tcg_out32(s, xthead_encode_vmv_s_x(vd, rs1));
+}
+
 static void tcg_out_xthead_lane0_mask(TCGContext *s)
 {
     /*
-     * Build v0 so lane 0 is active. With AVL=1 only lane 0 participates,
-     * and tail-undisturbed keeps the upper 64 bits untouched.
+     * Build v0 from scalar 1 in element 0. For mask consumers, this gives
+     * bit0 = 1 and bit1+ = 0, avoiding stale tail mask bits from prior uses
+     * of v0 when only vl=1 is active.
      */
-    tcg_out_xthead_vmv_v_i(s, TCG_REG_V0, 0);
-    tcg_out32(s, xthead_encode_vmseq_vi(TCG_REG_V0, 0, TCG_REG_V0, true));
+    tcg_out_xthead_vmv_s_x(s, TCG_REG_V0, TCG_REG_TMP0);
 }
 
 static void tcg_out_xthead_vadd_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
