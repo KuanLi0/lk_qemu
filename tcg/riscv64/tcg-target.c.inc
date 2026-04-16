@@ -775,10 +775,10 @@ static void tcg_out_xthead_lane0_mask(TCGContext *s)
 {
     /*
      * Build v0 from scalar 1 in element 0. For mask consumers, this gives
-     * bit0 = 1 and bit1+ = 0, avoiding stale tail mask bits from prior uses
-     * of v0 when only vl=1 is active.
+     * bit0 = 1 and bit1+ = 0, so lane 0 is active and lane 1 stays masked.
      */
-    tcg_out_xthead_vmv_s_x(s, TCG_REG_V0, TCG_REG_TMP0);
+    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP1, TCG_REG_ZERO, 1);
+    tcg_out_xthead_vmv_s_x(s, TCG_REG_V0, TCG_REG_TMP1);
 }
 
 static void tcg_out_xthead_vadd_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
@@ -965,7 +965,12 @@ static void tcg_out_xthead_vconfig_f64_scalar(TCGContext *s)
     uint32_t vtypei = xthead_encode_vtypei(false, false,
                                            XTHEAD_VSEW_64, XTHEAD_VLMUL_M1);
 
-    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, TCG_REG_ZERO, 1);
+    /*
+     * Keep both 64-bit lanes active and use v0 to mask off lane 1. Relying on
+     * lane 1 as a tail element is not sufficient for x86 addsd/subsd high-qword
+     * preservation on current XThead hardware.
+     */
+    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP0, TCG_REG_ZERO, 2);
     tcg_out_xthead_vsetvli(s, TCG_REG_ZERO, TCG_REG_TMP0, vtypei);
 }
 
@@ -989,7 +994,7 @@ static void tcg_out_xthead_scalarsd(TCGContext *s, TCGOpcode opc,
     default:
         g_assert_not_reached();
     }
-    /* Restore the cached vtype state after the temporary AVL=1 scalar setup. */
+    /* Restore the cached vtype state after the temporary scalar setup. */
     init_setting_vtype(s);
 }
 
