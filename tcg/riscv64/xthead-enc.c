@@ -14,7 +14,14 @@
 #define XTHEAD_OPC_TH_VMV_V_V   (0x5e000057u | XTHEAD_V_OPIVV)
 #define XTHEAD_OPC_TH_VMV_V_I   (0x5e000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VMV_V_X   (0x5e000057u | XTHEAD_V_OPIVX)
-#define XTHEAD_OPC_TH_VMV_S_X   (0x42006057u)
+/*
+ * XTheadVector scalar/lane move opcodes do not use the standard RVV encodings
+ * used by vmv.v.{v,x,i}. Keep this family separate from the generic RVV bases.
+ */
+#define XTHEAD_OPC_TH_VMV_X_S   (0x32002057u)
+#define XTHEAD_OPC_TH_VFMV_F_S  (0x32001057u)
+#define XTHEAD_OPC_TH_VMV_S_X   (0x36006057u)
+#define XTHEAD_OPC_TH_VFMV_S_F  (0x36005057u)
 #define XTHEAD_OPC_TH_VMERGE_VIM (0x5c000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VADD_VV   (0x00000057u | XTHEAD_V_OPIVV)
 #define XTHEAD_OPC_TH_VADD_VI   (0x00000057u | XTHEAD_V_OPIVI)
@@ -145,6 +152,27 @@ uint32_t xthead_encode_vmv_s_x(unsigned vd, unsigned rs1)
     return XTHEAD_OPC_TH_VMV_S_X |
            xthead_encode_reg5(vd, 7) |
            xthead_encode_reg5(rs1, 15);
+}
+
+uint32_t xthead_encode_vmv_x_s(unsigned rd, unsigned vs2)
+{
+    return XTHEAD_OPC_TH_VMV_X_S |
+           xthead_encode_reg5(rd, 7) |
+           xthead_encode_reg5(vs2, 20);
+}
+
+uint32_t xthead_encode_vfmv_s_f(unsigned vd, unsigned rs1)
+{
+    return XTHEAD_OPC_TH_VFMV_S_F |
+           xthead_encode_reg5(vd, 7) |
+           xthead_encode_reg5(rs1, 15);
+}
+
+uint32_t xthead_encode_vfmv_f_s(unsigned rd, unsigned vs2)
+{
+    return XTHEAD_OPC_TH_VFMV_F_S |
+           xthead_encode_reg5(rd, 7) |
+           xthead_encode_reg5(vs2, 20);
 }
 
 uint32_t xthead_encode_vadd_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)
