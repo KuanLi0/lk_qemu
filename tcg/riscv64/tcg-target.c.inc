@@ -766,16 +766,14 @@ static void tcg_out_xthead_vmv_v_i(TCGContext *s, TCGReg vd, int32_t imm)
     tcg_out32(s, xthead_encode_vmv_v_i(vd, imm, true));
 }
 
-static void tcg_out_xthead_vfadd_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
-                                    TCGReg vs2)
+static void tcg_out_xthead_lane0_mask(TCGContext *s)
 {
-    tcg_out32(s, xthead_encode_vfadd_vv(vd, vs1, vs2, true));
-}
-
-static void tcg_out_xthead_vfsub_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
-                                    TCGReg vs2)
-{
-    tcg_out32(s, xthead_encode_vfsub_vv(vd, vs1, vs2, true));
+    /*
+     * Build v0 so lane 0 is active. With AVL=1 only lane 0 participates,
+     * and tail-undisturbed keeps the upper 64 bits untouched.
+     */
+    tcg_out_xthead_vmv_v_i(s, TCG_REG_V0, 0);
+    tcg_out32(s, xthead_encode_vmseq_vi(TCG_REG_V0, 0, TCG_REG_V0, true));
 }
 
 static void tcg_out_xthead_vadd_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
@@ -974,13 +972,14 @@ static void tcg_out_xthead_scalarsd(TCGContext *s, TCGOpcode opc,
     }
 
     tcg_out_xthead_vconfig_f64_scalar(s);
+    tcg_out_xthead_lane0_mask(s);
     switch (opc) {
     case INDEX_op_xthead_vfaddsd_vec:
-        tcg_out_xthead_vfadd_vv(s, dst, src, dst);
+        tcg_out32(s, xthead_encode_vfadd_vv(dst, src, dst, false));
         break;
     case INDEX_op_xthead_vfsubsd_vec:
         /* RISC-V vv encoding is vd = vs2 - vs1, so keep old_dst in vs2. */
-        tcg_out_xthead_vfsub_vv(s, dst, src, dst);
+        tcg_out32(s, xthead_encode_vfsub_vv(dst, src, dst, false));
         break;
     default:
         g_assert_not_reached();

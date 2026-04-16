@@ -614,10 +614,8 @@ FP_SSE(VMUL, mul)
 
 typedef struct SSEInsnInfo {
     bool is_sd;
-    bool is_reg_reg;
     bool uses_vex;
     int dst_reg;
-    int src_reg;
 } SSEInsnInfo;
 
 typedef enum XtheadSSEFastPathKind {
@@ -627,7 +625,7 @@ typedef enum XtheadSSEFastPathKind {
 
 enum {
     XTHEAD_SSE_MATCH_SD = (1 << 0),
-    XTHEAD_SSE_MATCH_REG_REG = (1 << 1),
+    XTHEAD_SSE_MATCH_DST_REG = (1 << 1),
     XTHEAD_SSE_MATCH_LEGACY = (1 << 2),
 };
 
@@ -638,14 +636,14 @@ typedef struct XtheadSSEFastPath {
 
 static const XtheadSSEFastPath xthead_vaddsd_vec = {
     .match = XTHEAD_SSE_MATCH_SD |
-             XTHEAD_SSE_MATCH_REG_REG |
+             XTHEAD_SSE_MATCH_DST_REG |
              XTHEAD_SSE_MATCH_LEGACY,
     .kind = XTHEAD_SSE_FASTPATH_FADD_SD,
 };
 
 static const XtheadSSEFastPath xthead_vsubsd_vec = {
     .match = XTHEAD_SSE_MATCH_SD |
-             XTHEAD_SSE_MATCH_REG_REG |
+             XTHEAD_SSE_MATCH_DST_REG |
              XTHEAD_SSE_MATCH_LEGACY,
     .kind = XTHEAD_SSE_FASTPATH_FSUB_SD,
 };
@@ -688,15 +686,10 @@ static SSEInsnInfo build_sse_binary_fp_info(DisasContext *s,
                  == PREFIX_REPNZ,
         .uses_vex = s->prefix & PREFIX_VEX,
         .dst_reg = -1,
-        .src_reg = -1,
     };
 
-    info.is_reg_reg = !decode->op[0].has_ea && !decode->op[2].has_ea;
     if (!decode->op[0].has_ea) {
         info.dst_reg = decode->op[0].n;
-    }
-    if (!decode->op[2].has_ea) {
-        info.src_reg = decode->op[2].n;
     }
     return info;
 }
@@ -708,13 +701,10 @@ static bool xthead_sse_fastpath_matches(const SSEInsnInfo *info,
     if ((fast->match & XTHEAD_SSE_MATCH_SD) && !info->is_sd) {
         return false;
     }
-    if ((fast->match & XTHEAD_SSE_MATCH_REG_REG) && !info->is_reg_reg) {
+    if ((fast->match & XTHEAD_SSE_MATCH_DST_REG) && info->dst_reg < 0) {
         return false;
     }
     if ((fast->match & XTHEAD_SSE_MATCH_LEGACY) && info->uses_vex) {
-        return false;
-    }
-    if (info->dst_reg < 0 || info->src_reg < 0) {
         return false;
     }
     /* Target-specific ops are not screened by tcg_op_supported(). */
@@ -728,17 +718,14 @@ static void gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
     int dst = info->dst_reg;
     bool high64_zero = s->xmm_state[dst].high64_valid &&
                        s->xmm_state[dst].high64_zero;
-    TCGv_i64 dst_hi;
     TCGv_vec dstv;
     TCGv_vec srcv;
 
     compute_xmm_offset(&decode->op[0]);
     compute_xmm_offset(&decode->op[2]);
 
-    dst_hi = tcg_temp_new_i64();
     dstv = tcg_temp_new_vec(TCG_TYPE_V128);
     srcv = tcg_temp_new_vec(TCG_TYPE_V128);
-    tcg_gen_ld_i64(dst_hi, OP_PTR0, offsetof(ZMMReg, ZMM_Q(1)));
     tcg_gen_ld_vec(dstv, OP_PTR0, 0);
     tcg_gen_ld_vec(srcv, OP_PTR2, 0);
     switch (fast->kind) {
@@ -752,7 +739,6 @@ static void gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
         g_assert_not_reached();
     }
     tcg_gen_st_vec(dstv, OP_PTR0, 0);
-    tcg_gen_st_i64(dst_hi, OP_PTR0, offsetof(ZMMReg, ZMM_Q(1)));
 
     s->cur_sse_mode = SSE_TR_ORIG;
     s->xmm_state[dst].low64_domain = XMM_DOMAIN_UNKNOWN;
