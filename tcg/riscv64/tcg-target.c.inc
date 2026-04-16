@@ -55,6 +55,8 @@ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
 static void init_setting_vtype(TCGContext *s);
 static MemOp set_vtype_len(TCGContext *s, TCGType type);
 static void set_vtype_len_sew(TCGContext *s, TCGType type, MemOp vsew);
+static void tgen_brcond(TCGContext *s, TCGType type, TCGCond cond,
+                        TCGReg arg1, TCGReg arg2, TCGLabel *l);
 
 static inline bool use_xthead_vector_backend(void)
 {
