@@ -27,6 +27,23 @@
 #define XTHEAD_OPC_TH_VADD_VI   (0x00000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VSUB_VV   (0x08000057u | XTHEAD_V_OPIVV)
 #define XTHEAD_OPC_TH_VRSUB_VI  (0x0c000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VMUL_VV   (0x94000057u | XTHEAD_V_OPMVV)
+#define XTHEAD_OPC_TH_VSADDU_VV (0x80000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VSADDU_VI (0x80000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VSSUBU_VV (0x88000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VSSUBU_VI (0x88000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VSADD_VV  (0x84000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VSADD_VI  (0x84000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VSSUB_VV  (0x8c000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VSSUB_VI  (0x8c000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VMINU_VV  (0x10000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VMINU_VI  (0x10000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VMIN_VV   (0x14000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VMIN_VI   (0x14000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VMAXU_VV  (0x18000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VMAXU_VI  (0x18000057u | XTHEAD_V_OPIVI)
+#define XTHEAD_OPC_TH_VMAX_VV   (0x1c000057u | XTHEAD_V_OPIVV)
+#define XTHEAD_OPC_TH_VMAX_VI   (0x1c000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VAND_VV   (0x24000057u | XTHEAD_V_OPIVV)
 #define XTHEAD_OPC_TH_VAND_VI   (0x24000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VOR_VV    (0x28000057u | XTHEAD_V_OPIVV)
@@ -193,6 +210,101 @@ uint32_t xthead_encode_vsub_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)
 uint32_t xthead_encode_vrsub_vi(unsigned vd, int32_t imm, unsigned vs2, bool vm)
 {
     return xthead_encode_vi(XTHEAD_OPC_TH_VRSUB_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vmul_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VMUL_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vsadd_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VSADD_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vsadd_vi(unsigned vd, int32_t imm, unsigned vs2, bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VSADD_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vssub_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VSSUB_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vssub_vi(unsigned vd, int32_t imm, unsigned vs2, bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VSSUB_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vsaddu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                 bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VSADDU_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vsaddu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                 bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VSADDU_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vssubu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                 bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VSSUBU_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vssubu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                 bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VSSUBU_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vmax_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VMAX_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vmax_vi(unsigned vd, int32_t imm, unsigned vs2, bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VMAX_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vmaxu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VMAXU_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vmaxu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VMAXU_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vmin_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VMIN_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vmin_vi(unsigned vd, int32_t imm, unsigned vs2, bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VMIN_VI, vd, imm, vs2, vm);
+}
+
+uint32_t xthead_encode_vminu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm)
+{
+    return xthead_encode_vv(XTHEAD_OPC_TH_VMINU_VV, vd, vs1, vs2, vm);
+}
+
+uint32_t xthead_encode_vminu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                bool vm)
+{
+    return xthead_encode_vi(XTHEAD_OPC_TH_VMINU_VI, vd, imm, vs2, vm);
 }
 
 uint32_t xthead_encode_vand_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)

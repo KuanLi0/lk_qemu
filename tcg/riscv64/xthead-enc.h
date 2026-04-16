@@ -40,6 +40,40 @@ uint32_t xthead_encode_vsub_vv(unsigned vd, unsigned vs1, unsigned vs2,
                                bool vm);
 uint32_t xthead_encode_vrsub_vi(unsigned vd, int32_t imm, unsigned vs2,
                                 bool vm);
+uint32_t xthead_encode_vmul_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                               bool vm);
+uint32_t xthead_encode_vsadd_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm);
+uint32_t xthead_encode_vsadd_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                bool vm);
+uint32_t xthead_encode_vssub_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm);
+uint32_t xthead_encode_vssub_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                bool vm);
+uint32_t xthead_encode_vsaddu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                 bool vm);
+uint32_t xthead_encode_vsaddu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                 bool vm);
+uint32_t xthead_encode_vssubu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                 bool vm);
+uint32_t xthead_encode_vssubu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                 bool vm);
+uint32_t xthead_encode_vmax_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                               bool vm);
+uint32_t xthead_encode_vmax_vi(unsigned vd, int32_t imm, unsigned vs2,
+                               bool vm);
+uint32_t xthead_encode_vmaxu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm);
+uint32_t xthead_encode_vmaxu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                bool vm);
+uint32_t xthead_encode_vmin_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                               bool vm);
+uint32_t xthead_encode_vmin_vi(unsigned vd, int32_t imm, unsigned vs2,
+                               bool vm);
+uint32_t xthead_encode_vminu_vv(unsigned vd, unsigned vs1, unsigned vs2,
+                                bool vm);
+uint32_t xthead_encode_vminu_vi(unsigned vd, int32_t imm, unsigned vs2,
+                                bool vm);
 uint32_t xthead_encode_vand_vv(unsigned vd, unsigned vs1, unsigned vs2,
                                bool vm);
 uint32_t xthead_encode_vand_vi(unsigned vd, int32_t imm, unsigned vs2,

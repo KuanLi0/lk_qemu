@@ -68,6 +68,15 @@ static inline bool xthead_supports_vec_op(TCGOpcode op)
     case INDEX_op_and_vec:
     case INDEX_op_or_vec:
     case INDEX_op_xor_vec:
+    case INDEX_op_mul_vec:
+    case INDEX_op_ssadd_vec:
+    case INDEX_op_sssub_vec:
+    case INDEX_op_usadd_vec:
+    case INDEX_op_ussub_vec:
+    case INDEX_op_smax_vec:
+    case INDEX_op_smin_vec:
+    case INDEX_op_umax_vec:
+    case INDEX_op_umin_vec:
     case INDEX_op_shli_vec:
     case INDEX_op_shri_vec:
     case INDEX_op_sari_vec:
@@ -771,6 +780,22 @@ static void tcg_out_xthead_vmv_s_x(TCGContext *s, TCGReg vd, TCGReg rs1)
     tcg_out32(s, xthead_encode_vmv_s_x(vd, rs1));
 }
 
+typedef uint32_t (*xthead_encode_vv_fn)(unsigned vd, unsigned vs1,
+                                        unsigned vs2, bool vm);
+typedef uint32_t (*xthead_encode_vi_fn)(unsigned vd, int32_t imm,
+                                        unsigned vs2, bool vm);
+
+static void tcg_out_xthead_vop_vv_vi(TCGContext *s, xthead_encode_vv_fn enc_vv,
+                                     xthead_encode_vi_fn enc_vi, TCGReg vd,
+                                     TCGReg vs2, TCGArg vi1, int c_vi1)
+{
+    if (c_vi1) {
+        tcg_out32(s, enc_vi(vd, vi1, vs2, true));
+    } else {
+        tcg_out32(s, enc_vv(vd, vi1, vs2, true));
+    }
+}
+
 static void tcg_out_xthead_lane0_mask(TCGContext *s)
 {
     /*
@@ -784,11 +809,8 @@ static void tcg_out_xthead_lane0_mask(TCGContext *s)
 static void tcg_out_xthead_vadd_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
                                       TCGArg vi1, int c_vi1)
 {
-    if (c_vi1) {
-        tcg_out32(s, xthead_encode_vadd_vi(vd, vi1, vs2, true));
-    } else {
-        tcg_out32(s, xthead_encode_vadd_vv(vd, vi1, vs2, true));
-    }
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vadd_vv, xthead_encode_vadd_vi,
+                             vd, vs2, vi1, c_vi1);
 }
 
 static void tcg_out_xthead_vsub_vv_vi(TCGContext *s, TCGReg vd, TCGArg lhs,
@@ -804,31 +826,84 @@ static void tcg_out_xthead_vsub_vv_vi(TCGContext *s, TCGReg vd, TCGArg lhs,
 static void tcg_out_xthead_vand_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
                                       TCGArg vi1, int c_vi1)
 {
-    if (c_vi1) {
-        tcg_out32(s, xthead_encode_vand_vi(vd, vi1, vs2, true));
-    } else {
-        tcg_out32(s, xthead_encode_vand_vv(vd, vi1, vs2, true));
-    }
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vand_vv, xthead_encode_vand_vi,
+                             vd, vs2, vi1, c_vi1);
 }
 
 static void tcg_out_xthead_vor_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
                                      TCGArg vi1, int c_vi1)
 {
-    if (c_vi1) {
-        tcg_out32(s, xthead_encode_vor_vi(vd, vi1, vs2, true));
-    } else {
-        tcg_out32(s, xthead_encode_vor_vv(vd, vi1, vs2, true));
-    }
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vor_vv, xthead_encode_vor_vi,
+                             vd, vs2, vi1, c_vi1);
 }
 
 static void tcg_out_xthead_vxor_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
                                       TCGArg vi1, int c_vi1)
 {
-    if (c_vi1) {
-        tcg_out32(s, xthead_encode_vxor_vi(vd, vi1, vs2, true));
-    } else {
-        tcg_out32(s, xthead_encode_vxor_vv(vd, vi1, vs2, true));
-    }
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vxor_vv, xthead_encode_vxor_vi,
+                             vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vmul_vv(TCGContext *s, TCGReg vd, TCGReg vs1,
+                                   TCGReg vs2)
+{
+    tcg_out32(s, xthead_encode_vmul_vv(vd, vs1, vs2, true));
+}
+
+static void tcg_out_xthead_vsadd_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                       TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vsadd_vv,
+                             xthead_encode_vsadd_vi, vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vssub_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                       TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vssub_vv,
+                             xthead_encode_vssub_vi, vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vsaddu_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                        TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vsaddu_vv,
+                             xthead_encode_vsaddu_vi, vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vssubu_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                        TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vssubu_vv,
+                             xthead_encode_vssubu_vi, vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vmax_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                      TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vmax_vv, xthead_encode_vmax_vi,
+                             vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vmaxu_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                       TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vmaxu_vv,
+                             xthead_encode_vmaxu_vi, vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vmin_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                      TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vmin_vv, xthead_encode_vmin_vi,
+                             vd, vs2, vi1, c_vi1);
+}
+
+static void tcg_out_xthead_vminu_vv_vi(TCGContext *s, TCGReg vd, TCGReg vs2,
+                                       TCGArg vi1, int c_vi1)
+{
+    tcg_out_xthead_vop_vv_vi(s, xthead_encode_vminu_vv,
+                             xthead_encode_vminu_vi, vd, vs2, vi1, c_vi1);
 }
 
 static void tcg_out_xthead_vshifti(TCGContext *s, TCGOpcode opc,
@@ -3028,6 +3103,42 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
             set_vtype_len_sew(s, type, MO_8);
             tcg_out_xthead_vxor_vv_vi(s, a0, a1, a2, c2);
             return;
+        case INDEX_op_mul_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vmul_vv(s, a0, a1, a2);
+            return;
+        case INDEX_op_ssadd_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vsadd_vv_vi(s, a0, a1, a2, c2);
+            return;
+        case INDEX_op_sssub_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vssub_vv_vi(s, a0, a1, a2, c2);
+            return;
+        case INDEX_op_usadd_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vsaddu_vv_vi(s, a0, a1, a2, c2);
+            return;
+        case INDEX_op_ussub_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vssubu_vv_vi(s, a0, a1, a2, c2);
+            return;
+        case INDEX_op_smax_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vmax_vv_vi(s, a0, a1, a2, c2);
+            return;
+        case INDEX_op_smin_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vmin_vv_vi(s, a0, a1, a2, c2);
+            return;
+        case INDEX_op_umax_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vmaxu_vv_vi(s, a0, a1, a2, c2);
+            return;
+        case INDEX_op_umin_vec:
+            set_vtype_len_sew(s, type, vece);
+            tcg_out_xthead_vminu_vv_vi(s, a0, a1, a2, c2);
+            return;
         case INDEX_op_shli_vec:
         case INDEX_op_shri_vec:
         case INDEX_op_sari_vec:
@@ -3294,7 +3405,17 @@ tcg_target_op_def(TCGOpcode op, TCGType type, unsigned flags)
         case INDEX_op_and_vec:
         case INDEX_op_or_vec:
         case INDEX_op_xor_vec:
+        case INDEX_op_ssadd_vec:
+        case INDEX_op_sssub_vec:
+        case INDEX_op_usadd_vec:
+        case INDEX_op_ussub_vec:
+        case INDEX_op_smax_vec:
+        case INDEX_op_smin_vec:
+        case INDEX_op_umax_vec:
+        case INDEX_op_umin_vec:
             return C_O1_I2(v, v, vK);
+        case INDEX_op_mul_vec:
+            return C_O1_I2(v, v, v);
         case INDEX_op_sub_vec:
             return C_O1_I2(v, vK, v);
         case INDEX_op_cmp_vec:
