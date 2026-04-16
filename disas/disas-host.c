@@ -7,6 +7,10 @@
 #include "disas/disas.h"
 #include "disas/capstone.h"
 #include "disas-internal.h"
+#if defined(__riscv)
+#include "target/riscv/cpu_cfg.h"
+#include "host/cpuinfo.h"
+#endif
 
 
 /*
@@ -57,7 +61,14 @@ static void initialize_debug_host(CPUDebug *s)
 #if defined(_ILP32) || (__riscv_xlen == 32)
     s->info.print_insn = print_insn_riscv32;
 #elif defined(_LP64)
+    static const RISCVCPUConfig xtheadvector_host_cfg = {
+        .ext_xtheadvector = true,
+    };
+
     s->info.print_insn = print_insn_riscv64;
+    if (cpuinfo_init() & CPUINFO_XTHEADVECTOR) {
+        s->info.target_info = &xtheadvector_host_cfg;
+    }
 #else
 #error unsupported RISC-V ABI
 #endif

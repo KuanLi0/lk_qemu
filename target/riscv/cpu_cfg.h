@@ -48,6 +48,7 @@ static inline bool has_xthead_p(const RISCVCPUConfig *cfg)
            cfg->ext_xtheadcondmov ||
            cfg->ext_xtheadfmemidx || cfg->ext_xtheadfmv ||
            cfg->ext_xtheadmac || cfg->ext_xtheadmemidx ||
+           cfg->ext_xtheadvector ||
            cfg->ext_xtheadmempair || cfg->ext_xtheadsync;
 }
 
@@ -68,6 +69,7 @@ MATERIALISE_EXT_PREDICATE(xtheadmac)
 MATERIALISE_EXT_PREDICATE(xtheadmemidx)
 MATERIALISE_EXT_PREDICATE(xtheadmempair)
 MATERIALISE_EXT_PREDICATE(xtheadsync)
+MATERIALISE_EXT_PREDICATE(xtheadvector)
 MATERIALISE_EXT_PREDICATE(XVentanaCondOps)
 
 #endif

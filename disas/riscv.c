@@ -986,6 +986,17 @@ typedef enum {
     rv_op_c_sspopchk = 955,
 } rv_op;
 
+typedef enum {
+    rv_op_thv_illegal = 0,
+    rv_op_th_vlbu_v = 1,
+    rv_op_th_vsb_v,
+    rv_op_th_vmv_x_s,
+    rv_op_th_vfmv_f_s,
+    rv_op_th_vmv_s_x,
+    rv_op_th_vfmv_s_f,
+    rv_op_th_vsetvli,
+} rv_xtheadvector_op;
+
 /* register names */
 
 static const char rv_ireg_name_sym[32][5] = {
@@ -5296,6 +5307,18 @@ static GString *format_inst(size_t tab, rv_decode *dec)
             g_string_append(buf, vma);
             break;
         }
+        case 'w': {
+            static const char * const xthead_lmul_name[] = {
+                "m1", "m2", "m4", "m8"
+            };
+            const unsigned vsew = (dec->vzimm >> 2) & 0x7;
+            const unsigned vlmul = dec->vzimm & 0x3;
+
+            g_string_append_printf(buf, "e%d,%s",
+                                   1 << (vsew + 3),
+                                   xthead_lmul_name[vlmul]);
+            break;
+        }
         case 'x': {
             switch (dec->rlist) {
             case 4:
@@ -5406,6 +5429,52 @@ static void decode_inst_decompress(rv_decode *dec, rv_isa isa)
     }
 }
 
+static const rv_opcode_data xtheadvector_opcode_data[] = {
+    { "th.illegal", rv_codec_illegal, rv_fmt_none, NULL, 0, 0, 0 },
+    { "th.vlbu.v", rv_codec_v_ldst, rv_fmt_ldst_vd_rs1_vm, NULL, 0, 0, 0 },
+    { "th.vsb.v", rv_codec_v_ldst, rv_fmt_ldst_vd_rs1_vm, NULL, 0, 0, 0 },
+    { "th.vmv.x.s", rv_codec_v_r, rv_fmt_rd_vs2, NULL, 0, 0, 0 },
+    { "th.vfmv.f.s", rv_codec_v_r, rv_fmt_fd_vs2, NULL, 0, 0, 0 },
+    { "th.vmv.s.x", rv_codec_v_r, rv_fmt_vd_rs1, NULL, 0, 0, 0 },
+    { "th.vfmv.s.f", rv_codec_v_r, rv_fmt_vd_fs1, NULL, 0, 0, 0 },
+    { "th.vsetvli", rv_codec_vsetvli, rv_fmt_xthead_vsetvli, NULL, 0, 0, 0 },
+};
+
+static void decode_xtheadvector(rv_decode *dec, rv_isa isa)
+{
+    rv_inst inst = dec->inst;
+
+    (void)isa;
+
+    switch (inst & 0x7f) {
+    case 0x07:
+        if ((inst & 0xfdf0707f) == 0x00000007) {
+            dec->op = rv_op_th_vlbu_v;
+        }
+        break;
+    case 0x27:
+        if ((inst & 0xfdf0707f) == 0x00000027) {
+            dec->op = rv_op_th_vsb_v;
+        }
+        break;
+    case 0x57:
+        if ((inst & 0x8000707f) == 0x00007057) {
+            dec->op = rv_op_th_vsetvli;
+        } else if ((inst & 0xfe0ff07f) == 0x32002057) {
+            dec->op = rv_op_th_vmv_x_s;
+        } else if ((inst & 0xfe0ff07f) == 0x32001057) {
+            dec->op = rv_op_th_vfmv_f_s;
+        } else if ((inst & 0xfff0707f) == 0x36006057) {
+            dec->op = rv_op_th_vmv_s_x;
+        } else if ((inst & 0xfff0707f) == 0x36005057) {
+            dec->op = rv_op_th_vfmv_s_f;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 /* disassemble instruction */
 
 static GString *disasm_inst(rv_isa isa, uint64_t pc, rv_inst inst,
@@ -5421,6 +5490,7 @@ static GString *disasm_inst(rv_isa isa, uint64_t pc, rv_inst inst,
         const rv_opcode_data *opcode_data;
         void (*decode_func)(rv_decode *, rv_isa);
     } decoders[] = {
+        { has_xtheadvector_p, xtheadvector_opcode_data, decode_xtheadvector },
         { always_true_p, rvi_opcode_data, decode_inst_opcode },
         { has_xtheadba_p, xthead_opcode_data, decode_xtheadba },
         { has_xtheadbb_p, xthead_opcode_data, decode_xtheadbb },
@@ -5441,12 +5511,16 @@ static GString *disasm_inst(rv_isa isa, uint64_t pc, rv_inst inst,
         const rv_opcode_data *opcode_data = decoders[i].opcode_data;
         void (*decode_func)(rv_decode *, rv_isa) = decoders[i].decode_func;
 
-        /* always_true_p don't dereference cfg */
-        if (((i == 0) || cfg) && guard_func(cfg)) {
-            dec.opcode_data = opcode_data;
-            decode_func(&dec, isa);
-            if (dec.op != rv_op_illegal)
-                break;
+        if (!cfg && guard_func != always_true_p) {
+            continue;
+        }
+        if (!guard_func(cfg)) {
+            continue;
+        }
+        dec.opcode_data = opcode_data;
+        decode_func(&dec, isa);
+        if (dec.op != rv_op_illegal) {
+            break;
         }
     }
 
