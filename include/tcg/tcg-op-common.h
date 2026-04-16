@@ -488,6 +488,15 @@ void tcg_gen_stl_vec(TCGv_vec r, TCGv_ptr base, TCGArg offset, TCGType t);
 #if defined(__riscv) && __riscv_xlen == 64
 void tcg_gen_xthead_vfaddsd_vec(TCGv_vec r, TCGv_vec a, TCGv_vec b);
 void tcg_gen_xthead_vfsubsd_vec(TCGv_vec r, TCGv_vec a, TCGv_vec b);
+void tcg_gen_xthead_cvtps2pd_vec(TCGv_vec r, TCGv_ptr src);
+void tcg_gen_xthead_cvtpd2ps_vec(TCGv_vec r, TCGv_ptr src, TCGv_i64 rm);
+void tcg_gen_xthead_cvtss2sd_vec(TCGv_vec r, TCGv_vec a, TCGv_ptr src);
+void tcg_gen_xthead_cvtsd2ss_vec(TCGv_vec r, TCGv_vec a,
+                                 TCGv_ptr src, TCGv_i64 rm);
+void tcg_gen_xthead_cvtsi2sd_vec(TCGv_vec r, TCGv_vec a, TCGv_i64 src,
+                                 TCGv_i64 rm, bool is_qword);
+void tcg_gen_xthead_roundss_vec(TCGv_vec r, TCGv_vec a,
+                                TCGv_ptr src, TCGv_i64 rm);
 #endif
 
 /* Host pointer ops */

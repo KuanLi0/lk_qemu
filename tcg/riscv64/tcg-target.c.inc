@@ -27,6 +27,7 @@
  * THE SOFTWARE.
  */
 
+#include "target/riscv/instmap.h"
 #include "tcg/riscv64/xthead-enc.h"
 
 /* Used for function call generation. */
@@ -780,6 +781,154 @@ static void tcg_out_xthead_vmv_s_x(TCGContext *s, TCGReg vd, TCGReg rs1)
     tcg_out32(s, xthead_encode_vmv_s_x(vd, rs1));
 }
 
+enum {
+    XTHEAD_FRM_RNE = 0,
+    XTHEAD_FRM_RTZ = 1,
+    XTHEAD_FRM_RDN = 2,
+    XTHEAD_FRM_RUP = 3,
+};
+
+enum {
+    XTHEAD_FT0 = 0,
+    XTHEAD_FT1 = 1,
+    XTHEAD_FT2 = 2,
+    XTHEAD_FT3 = 3,
+};
+
+typedef unsigned XtheadFReg;
+
+static void tcg_out_opc_fp_r(TCGContext *s, uint32_t opc,
+                             unsigned rd, unsigned rs1, unsigned rs2)
+{
+    tcg_out32(s, encode_r(opc, (TCGReg)rd, (TCGReg)rs1, (TCGReg)rs2));
+}
+
+static void tcg_out_opc_fp_i(TCGContext *s, uint32_t opc,
+                             unsigned rd, TCGReg rs1, int32_t imm)
+{
+    tcg_out32(s, encode_i(opc, (TCGReg)rd, rs1, imm));
+}
+
+static void tcg_out_flw(TCGContext *s, XtheadFReg frd, TCGReg base, int32_t off)
+{
+    tcg_out_opc_fp_i(s, OPC_RISC_FLW, frd, base, off);
+}
+
+static void tcg_out_fld(TCGContext *s, XtheadFReg frd, TCGReg base, int32_t off)
+{
+    tcg_out_opc_fp_i(s, OPC_RISC_FLD, frd, base, off);
+}
+
+static void tcg_out_fsgnj_s(TCGContext *s, XtheadFReg frd,
+                            XtheadFReg frs1, XtheadFReg frs2)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FSGNJ_S, frd, frs1, frs2);
+}
+
+static void tcg_out_fsgnjx_s(TCGContext *s, XtheadFReg frd,
+                             XtheadFReg frs1, XtheadFReg frs2)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FSGNJX_S | (2 << 12), frd, frs1, frs2);
+}
+
+static void tcg_out_flt_s(TCGContext *s, TCGReg rd,
+                          XtheadFReg frs1, XtheadFReg frs2)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FLT_S | (1 << 12), rd, frs1, frs2);
+}
+
+static void tcg_out_fcvt_w_s(TCGContext *s, TCGReg rd,
+                             XtheadFReg frs1, unsigned frm)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FCVT_W_S | (frm << 12), rd, frs1, 0);
+}
+
+static void tcg_out_fcvt_s_w(TCGContext *s, XtheadFReg frd,
+                             TCGReg rs1, unsigned frm)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FCVT_S_W | (frm << 12), frd, rs1, 0);
+}
+
+static void tcg_out_fcvt_s_d(TCGContext *s, XtheadFReg frd,
+                             XtheadFReg frs1, unsigned frm)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FCVT_S_D | (frm << 12), frd, frs1, 1);
+}
+
+static void tcg_out_fcvt_d_s(TCGContext *s, XtheadFReg frd, XtheadFReg frs1)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FCVT_D_S, frd, frs1, 0);
+}
+
+static void tcg_out_fcvt_d_w(TCGContext *s, XtheadFReg frd,
+                             TCGReg rs1, unsigned frm)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FCVT_D_W | (frm << 12), frd, rs1, 0);
+}
+
+static void tcg_out_fcvt_d_l(TCGContext *s, XtheadFReg frd,
+                             TCGReg rs1, unsigned frm)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FCVT_D_L | (frm << 12), frd, rs1, 2);
+}
+
+static void tcg_out_fmv_x_w(TCGContext *s, TCGReg rd, XtheadFReg frs1)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FMV_X_S, rd, frs1, 0);
+}
+
+static void tcg_out_fmv_x_d(TCGContext *s, TCGReg rd, XtheadFReg frs1)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FMV_X_D, rd, frs1, 0);
+}
+
+static void tcg_out_fmv_w_x(TCGContext *s, XtheadFReg frd, TCGReg rs1)
+{
+    tcg_out_opc_fp_r(s, OPC_RISC_FMV_S_X, frd, rs1, 0);
+}
+
+static void tcg_out_xthead_vfmv_s_f(TCGContext *s, TCGReg vd, XtheadFReg frs1)
+{
+    tcg_out32(s, xthead_encode_vfmv_s_f(vd, frs1));
+}
+
+typedef void (*xthead_emit_frm_fn)(TCGContext *s, unsigned frm,
+                                   const void *opaque);
+
+static void tcg_out_xthead_with_x86_rm(TCGContext *s, TCGReg x86_rm,
+                                       xthead_emit_frm_fn emit,
+                                       const void *opaque)
+{
+    TCGLabel *label_rne = gen_new_label();
+    TCGLabel *label_rdn = gen_new_label();
+    TCGLabel *label_rup = gen_new_label();
+    TCGLabel *label_done = gen_new_label();
+
+    tgen_brcond(s, TCG_TYPE_I64, TCG_COND_EQ, x86_rm, TCG_REG_ZERO, label_rne);
+
+    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP2, TCG_REG_ZERO, 1);
+    tgen_brcond(s, TCG_TYPE_I64, TCG_COND_EQ, x86_rm, TCG_REG_TMP2, label_rdn);
+
+    tcg_out_opc_imm(s, OPC_ADDI, TCG_REG_TMP2, TCG_REG_ZERO, 2);
+    tgen_brcond(s, TCG_TYPE_I64, TCG_COND_EQ, x86_rm, TCG_REG_TMP2, label_rup);
+
+    emit(s, XTHEAD_FRM_RTZ, opaque);
+    tcg_out_br(s, label_done);
+
+    tcg_out_label(s, label_rne);
+    emit(s, XTHEAD_FRM_RNE, opaque);
+    tcg_out_br(s, label_done);
+
+    tcg_out_label(s, label_rdn);
+    emit(s, XTHEAD_FRM_RDN, opaque);
+    tcg_out_br(s, label_done);
+
+    tcg_out_label(s, label_rup);
+    emit(s, XTHEAD_FRM_RUP, opaque);
+
+    tcg_out_label(s, label_done);
+}
+
 typedef uint32_t (*xthead_encode_vv_fn)(unsigned vd, unsigned vs1,
                                         unsigned vs2, bool vm);
 typedef uint32_t (*xthead_encode_vi_fn)(unsigned vd, int32_t imm,
@@ -1071,6 +1220,168 @@ static void tcg_out_xthead_scalarsd(TCGContext *s, TCGOpcode opc,
     }
     /* Restore the cached vtype state after the temporary scalar setup. */
     init_setting_vtype(s);
+}
+
+typedef struct XtheadFprUnary {
+    XtheadFReg fd;
+    XtheadFReg fs;
+} XtheadFprUnary;
+
+typedef struct XtheadIntToDouble {
+    XtheadFReg fd;
+    TCGReg src;
+    bool is_qword;
+} XtheadIntToDouble;
+
+static void xthead_emit_fcvt_s_d(TCGContext *s, unsigned frm,
+                                 const void *opaque)
+{
+    const XtheadFprUnary *u = opaque;
+
+    tcg_out_fcvt_s_d(s, u->fd, u->fs, frm);
+}
+
+static void xthead_emit_fcvt_d_int(TCGContext *s, unsigned frm,
+                                   const void *opaque)
+{
+    const XtheadIntToDouble *cvt = opaque;
+
+    if (cvt->is_qword) {
+        tcg_out_fcvt_d_l(s, cvt->fd, cvt->src, frm);
+    } else {
+        tcg_out_fcvt_d_w(s, cvt->fd, cvt->src, frm);
+    }
+}
+
+static void tcg_out_xthead_round32(TCGContext *s, unsigned frm,
+                                   XtheadFReg fdst, XtheadFReg fsrc)
+{
+    TCGLabel *label_exit = gen_new_label();
+
+    /* fabsf(src) */
+    tcg_out_fsgnjx_s(s, XTHEAD_FT1, fsrc, fsrc);
+
+    /* 0x4b800000 == 2^23, the boundary where rounding becomes exact. */
+    tcg_out_movi(s, TCG_TYPE_I64, TCG_REG_TMP2, 0x4b800000u);
+    tcg_out_fmv_w_x(s, XTHEAD_FT2, TCG_REG_TMP2);
+    tcg_out_flt_s(s, TCG_REG_TMP2, XTHEAD_FT1, XTHEAD_FT2);
+
+    /* Default result is the original source value. */
+    tcg_out_fsgnj_s(s, fdst, fsrc, fsrc);
+    tgen_brcond(s, TCG_TYPE_I64, TCG_COND_EQ,
+                TCG_REG_TMP2, TCG_REG_ZERO, label_exit);
+
+    tcg_out_fcvt_w_s(s, TCG_REG_TMP2, fsrc, frm);
+    tcg_out_fcvt_s_w(s, XTHEAD_FT2, TCG_REG_TMP2, frm);
+    tcg_out_fsgnj_s(s, fdst, XTHEAD_FT2, fdst);
+
+    tcg_out_label(s, label_exit);
+}
+
+static void tcg_out_xthead_cvtps2pd(TCGContext *s, TCGReg dst, TCGReg src_ptr)
+{
+    set_vtype_len_sew(s, TCG_TYPE_V128, MO_64);
+
+    tcg_out_flw(s, XTHEAD_FT0, src_ptr, 0);
+    tcg_out_flw(s, XTHEAD_FT1, src_ptr, 4);
+    tcg_out_fcvt_d_s(s, XTHEAD_FT0, XTHEAD_FT0);
+    tcg_out_fcvt_d_s(s, XTHEAD_FT1, XTHEAD_FT1);
+
+    /* v0 is reserved from RA, so use it as a private construction scratch. */
+    tcg_out_xthead_vmv_v_i(s, TCG_REG_V0, 0);
+    tcg_out_xthead_vfmv_s_f(s, TCG_REG_V0, XTHEAD_FT1);
+    tcg_out_fmv_x_d(s, TCG_REG_TMP1, XTHEAD_FT0);
+    tcg_out32(s, xthead_encode_vslide1up_vx(dst, TCG_REG_TMP1, TCG_REG_V0,
+                                            true));
+}
+
+static void tcg_out_xthead_cvtpd2ps_rm(TCGContext *s, unsigned frm,
+                                       const void *opaque)
+{
+    TCGReg src_ptr = (uintptr_t)opaque;
+
+    tcg_out_fld(s, XTHEAD_FT0, src_ptr, 0);
+    tcg_out_fld(s, XTHEAD_FT1, src_ptr, 8);
+    tcg_out_fcvt_s_d(s, XTHEAD_FT0, XTHEAD_FT0, frm);
+    tcg_out_fcvt_s_d(s, XTHEAD_FT1, XTHEAD_FT1, frm);
+}
+
+static void tcg_out_xthead_cvtpd2ps(TCGContext *s, TCGReg dst,
+                                    TCGReg src_ptr, TCGReg x86_rm)
+{
+    set_vtype_len_sew(s, TCG_TYPE_V128, MO_32);
+    tcg_out_xthead_with_x86_rm(s, x86_rm, tcg_out_xthead_cvtpd2ps_rm,
+                               (const void *)(uintptr_t)src_ptr);
+
+    tcg_out_xthead_vmv_v_i(s, TCG_REG_V0, 0);
+    tcg_out_xthead_vfmv_s_f(s, TCG_REG_V0, XTHEAD_FT1);
+    tcg_out_fmv_x_w(s, TCG_REG_TMP1, XTHEAD_FT0);
+    tcg_out32(s, xthead_encode_vslide1up_vx(dst, TCG_REG_TMP1, TCG_REG_V0,
+                                            true));
+}
+
+static void tcg_out_xthead_cvtss2sd(TCGContext *s, TCGReg dst,
+                                    TCGReg pass, TCGReg src_ptr)
+{
+    if (dst != pass) {
+        tcg_out_mov(s, TCG_TYPE_V128, dst, pass);
+    }
+    set_vtype_len_sew(s, TCG_TYPE_V128, MO_64);
+    tcg_out_flw(s, XTHEAD_FT0, src_ptr, 0);
+    tcg_out_fcvt_d_s(s, XTHEAD_FT0, XTHEAD_FT0);
+    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT0);
+}
+
+static void tcg_out_xthead_cvtsd2ss(TCGContext *s, TCGReg dst, TCGReg pass,
+                                    TCGReg src_ptr, TCGReg x86_rm)
+{
+    XtheadFprUnary op = { .fd = XTHEAD_FT0, .fs = XTHEAD_FT0 };
+
+    if (dst != pass) {
+        tcg_out_mov(s, TCG_TYPE_V128, dst, pass);
+    }
+    set_vtype_len_sew(s, TCG_TYPE_V128, MO_32);
+    tcg_out_fld(s, XTHEAD_FT0, src_ptr, 0);
+    tcg_out_xthead_with_x86_rm(s, x86_rm, xthead_emit_fcvt_s_d, &op);
+    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT0);
+}
+
+static void tcg_out_xthead_cvtsi2sd(TCGContext *s, TCGReg dst, TCGReg pass,
+                                    TCGReg src, TCGReg x86_rm, bool is_qword)
+{
+    XtheadIntToDouble op = {
+        .fd = XTHEAD_FT0,
+        .src = src,
+        .is_qword = is_qword,
+    };
+
+    if (dst != pass) {
+        tcg_out_mov(s, TCG_TYPE_V128, dst, pass);
+    }
+    set_vtype_len_sew(s, TCG_TYPE_V128, MO_64);
+    tcg_out_xthead_with_x86_rm(s, x86_rm, xthead_emit_fcvt_d_int, &op);
+    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT0);
+}
+
+static void tcg_out_xthead_roundss_rm(TCGContext *s, unsigned frm,
+                                      const void *opaque)
+{
+    TCGReg src_ptr = (uintptr_t)opaque;
+
+    tcg_out_flw(s, XTHEAD_FT0, src_ptr, 0);
+    tcg_out_xthead_round32(s, frm, XTHEAD_FT3, XTHEAD_FT0);
+}
+
+static void tcg_out_xthead_roundss(TCGContext *s, TCGReg dst, TCGReg pass,
+                                   TCGReg src_ptr, TCGReg x86_rm)
+{
+    if (dst != pass) {
+        tcg_out_mov(s, TCG_TYPE_V128, dst, pass);
+    }
+    set_vtype_len_sew(s, TCG_TYPE_V128, MO_32);
+    tcg_out_xthead_with_x86_rm(s, x86_rm, tcg_out_xthead_roundss_rm,
+                               (const void *)(uintptr_t)src_ptr);
+    tcg_out_xthead_vfmv_s_f(s, dst, XTHEAD_FT3);
 }
 
 typedef struct VsetCache {
@@ -3157,6 +3468,12 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         switch (opc) {
         case INDEX_op_xthead_vfaddsd_vec:
         case INDEX_op_xthead_vfsubsd_vec:
+        case INDEX_op_xthead_cvtps2pd_vec:
+        case INDEX_op_xthead_cvtpd2ps_vec:
+        case INDEX_op_xthead_cvtss2sd_vec:
+        case INDEX_op_xthead_cvtsd2ss_vec:
+        case INDEX_op_xthead_cvtsi2sd_vec:
+        case INDEX_op_xthead_roundss_vec:
         case INDEX_op_dupm_vec:
         case INDEX_op_ld_vec:
         case INDEX_op_st_vec:
@@ -3173,6 +3490,30 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
     case INDEX_op_xthead_vfsubsd_vec:
         tcg_debug_assert(type == TCG_TYPE_V128);
         tcg_out_xthead_scalarsd(s, opc, a0, a1, a2);
+        break;
+    case INDEX_op_xthead_cvtps2pd_vec:
+        tcg_debug_assert(type == TCG_TYPE_V128);
+        tcg_out_xthead_cvtps2pd(s, a0, a1);
+        break;
+    case INDEX_op_xthead_cvtpd2ps_vec:
+        tcg_debug_assert(type == TCG_TYPE_V128);
+        tcg_out_xthead_cvtpd2ps(s, a0, a1, a2);
+        break;
+    case INDEX_op_xthead_cvtss2sd_vec:
+        tcg_debug_assert(type == TCG_TYPE_V128);
+        tcg_out_xthead_cvtss2sd(s, a0, a1, a2);
+        break;
+    case INDEX_op_xthead_cvtsd2ss_vec:
+        tcg_debug_assert(type == TCG_TYPE_V128);
+        tcg_out_xthead_cvtsd2ss(s, a0, a1, a2, args[3]);
+        break;
+    case INDEX_op_xthead_cvtsi2sd_vec:
+        tcg_debug_assert(type == TCG_TYPE_V128);
+        tcg_out_xthead_cvtsi2sd(s, a0, a1, a2, args[3], args[4]);
+        break;
+    case INDEX_op_xthead_roundss_vec:
+        tcg_debug_assert(type == TCG_TYPE_V128);
+        tcg_out_xthead_roundss(s, a0, a1, a2, args[3]);
         break;
     case INDEX_op_dupm_vec:
         tcg_out_dupm_vec(s, type, vece, a0, a1, a2);
@@ -3393,6 +3734,28 @@ tcg_target_op_def(TCGOpcode op, TCGType type, unsigned flags)
                 return C_O1_I2(v, v, v);
             }
             return C_NotImplemented;
+        case INDEX_op_xthead_cvtps2pd_vec:
+            if (type == TCG_TYPE_V128) {
+                return C_O1_I1(v, r);
+            }
+            return C_NotImplemented;
+        case INDEX_op_xthead_cvtpd2ps_vec:
+            if (type == TCG_TYPE_V128) {
+                return C_O1_I2(v, r, r);
+            }
+            return C_NotImplemented;
+        case INDEX_op_xthead_cvtss2sd_vec:
+            if (type == TCG_TYPE_V128) {
+                return C_O1_I2(v, v, r);
+            }
+            return C_NotImplemented;
+        case INDEX_op_xthead_cvtsd2ss_vec:
+        case INDEX_op_xthead_roundss_vec:
+        case INDEX_op_xthead_cvtsi2sd_vec:
+            if (type == TCG_TYPE_V128) {
+                return C_O1_I3(v, v, r, r);
+            }
+            return C_NotImplemented;
         case INDEX_op_dup_vec:
         case INDEX_op_dupm_vec:
         case INDEX_op_ld_vec:
@@ -3432,6 +3795,28 @@ tcg_target_op_def(TCGOpcode op, TCGType type, unsigned flags)
     case INDEX_op_xthead_vfsubsd_vec:
         if ((cpuinfo & CPUINFO_XTHEADVECTOR) && type == TCG_TYPE_V128) {
             return C_O1_I2(v, v, v);
+        }
+        return C_NotImplemented;
+    case INDEX_op_xthead_cvtps2pd_vec:
+        if ((cpuinfo & CPUINFO_XTHEADVECTOR) && type == TCG_TYPE_V128) {
+            return C_O1_I1(v, r);
+        }
+        return C_NotImplemented;
+    case INDEX_op_xthead_cvtpd2ps_vec:
+        if ((cpuinfo & CPUINFO_XTHEADVECTOR) && type == TCG_TYPE_V128) {
+            return C_O1_I2(v, r, r);
+        }
+        return C_NotImplemented;
+    case INDEX_op_xthead_cvtss2sd_vec:
+        if ((cpuinfo & CPUINFO_XTHEADVECTOR) && type == TCG_TYPE_V128) {
+            return C_O1_I2(v, v, r);
+        }
+        return C_NotImplemented;
+    case INDEX_op_xthead_cvtsd2ss_vec:
+    case INDEX_op_xthead_roundss_vec:
+    case INDEX_op_xthead_cvtsi2sd_vec:
+        if ((cpuinfo & CPUINFO_XTHEADVECTOR) && type == TCG_TYPE_V128) {
+            return C_O1_I3(v, v, r, r);
         }
         return C_NotImplemented;
     case INDEX_op_dup_vec:

@@ -22,6 +22,7 @@
 #define XTHEAD_OPC_TH_VFMV_F_S  (0x32001057u)
 #define XTHEAD_OPC_TH_VMV_S_X   (0x36006057u)
 #define XTHEAD_OPC_TH_VFMV_S_F  (0x36005057u)
+#define XTHEAD_OPC_TH_VSLIDE1UP_VX (0x38006057u)
 #define XTHEAD_OPC_TH_VMERGE_VIM (0x5c000057u | XTHEAD_V_OPIVI)
 #define XTHEAD_OPC_TH_VADD_VV   (0x00000057u | XTHEAD_V_OPIVV)
 #define XTHEAD_OPC_TH_VADD_VI   (0x00000057u | XTHEAD_V_OPIVI)
@@ -190,6 +191,12 @@ uint32_t xthead_encode_vfmv_f_s(unsigned rd, unsigned vs2)
     return XTHEAD_OPC_TH_VFMV_F_S |
            xthead_encode_reg5(rd, 7) |
            xthead_encode_reg5(vs2, 20);
+}
+
+uint32_t xthead_encode_vslide1up_vx(unsigned vd, unsigned rs1, unsigned vs2,
+                                    bool vm)
+{
+    return xthead_encode_vx(XTHEAD_OPC_TH_VSLIDE1UP_VX, vd, rs1, vs2, vm);
 }
 
 uint32_t xthead_encode_vadd_vv(unsigned vd, unsigned vs1, unsigned vs2, bool vm)

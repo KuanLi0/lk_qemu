@@ -12,3 +12,9 @@
  */
 DEF(xthead_vfaddsd_vec, 1, 2, 0, TCG_OPF_VECTOR)
 DEF(xthead_vfsubsd_vec, 1, 2, 0, TCG_OPF_VECTOR)
+DEF(xthead_cvtps2pd_vec, 1, 1, 0, TCG_OPF_VECTOR)
+DEF(xthead_cvtpd2ps_vec, 1, 2, 0, TCG_OPF_VECTOR)
+DEF(xthead_cvtss2sd_vec, 1, 2, 0, TCG_OPF_VECTOR)
+DEF(xthead_cvtsd2ss_vec, 1, 3, 0, TCG_OPF_VECTOR)
+DEF(xthead_cvtsi2sd_vec, 1, 3, 1, TCG_OPF_VECTOR)
+DEF(xthead_roundss_vec, 1, 3, 0, TCG_OPF_VECTOR)

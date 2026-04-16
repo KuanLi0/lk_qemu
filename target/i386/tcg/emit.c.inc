@@ -771,6 +771,235 @@ static bool try_gen_xthead_sse_fastpath(DisasContext *s, X86DecodedInsn *decode,
 
 typedef void (*SSEEmitFn)(DisasContext *s, X86DecodedInsn *decode);
 
+#if defined(__riscv) && __riscv_xlen == 64
+static bool xthead_sse_xmm_legacy_enabled(DisasContext *s)
+{
+    return !(s->prefix & PREFIX_VEX) &&
+           !s->vex_l &&
+           ((cpuinfo_init() & CPUINFO_XTHEADVECTOR) != 0);
+}
+
+static TCGv_i64 gen_xthead_x86_rm_from_mxcsr(void)
+{
+    TCGv_i32 mxcsr = tcg_temp_new_i32();
+    TCGv_i64 rm = tcg_temp_new_i64();
+
+    tcg_gen_ld_i32(mxcsr, tcg_env, offsetof(CPUX86State, mxcsr));
+    tcg_gen_shri_i32(mxcsr, mxcsr, 13);
+    tcg_gen_andi_i32(mxcsr, mxcsr, 3);
+    tcg_gen_extu_i32_i64(rm, mxcsr);
+    return rm;
+}
+
+static TCGv_i64 gen_xthead_roundss_rm(X86DecodedInsn *decode)
+{
+    if (decode->immediate & (1 << 2)) {
+        return gen_xthead_x86_rm_from_mxcsr();
+    }
+    return tcg_constant_i64(decode->immediate & 3);
+}
+
+static void xthead_set_xmm_state_defined(DisasContext *s, int dst,
+                                         bool high64_valid, bool high64_zero)
+{
+    s->cur_sse_mode = SSE_TR_ORIG;
+    s->xmm_state[dst].low64_domain = XMM_DOMAIN_UNKNOWN;
+    s->xmm_state[dst].high64_valid = high64_valid;
+    s->xmm_state[dst].high64_zero = high64_valid && high64_zero;
+}
+
+static void xthead_copy_high64_state(DisasContext *s, int dst, int pass_reg)
+{
+    bool valid = false;
+    bool zero = false;
+
+    if (pass_reg >= 0) {
+        valid = s->xmm_state[pass_reg].high64_valid;
+        zero = valid && s->xmm_state[pass_reg].high64_zero;
+    }
+    xthead_set_xmm_state_defined(s, dst, valid, zero);
+}
+
+static bool try_gen_xthead_cvtpd2ps(DisasContext *s, X86DecodedInsn *decode)
+{
+    int dst;
+    TCGv_vec dstv;
+
+    if (!xthead_sse_xmm_legacy_enabled(s) || decode->op[0].has_ea) {
+        return false;
+    }
+
+    dst = decode->op[0].n;
+    compute_xmm_offset(&decode->op[0]);
+    compute_xmm_offset(&decode->op[2]);
+
+    dstv = tcg_temp_new_vec(TCG_TYPE_V128);
+    tcg_gen_xthead_cvtpd2ps_vec(dstv, OP_PTR2, gen_xthead_x86_rm_from_mxcsr());
+    tcg_gen_st_vec(dstv, OP_PTR0, 0);
+
+    xthead_set_xmm_state_defined(s, dst, true, true);
+    return true;
+}
+
+static bool try_gen_xthead_cvtps2pd(DisasContext *s, X86DecodedInsn *decode)
+{
+    int dst;
+    TCGv_vec dstv;
+
+    if (!xthead_sse_xmm_legacy_enabled(s) || decode->op[0].has_ea) {
+        return false;
+    }
+
+    dst = decode->op[0].n;
+    compute_xmm_offset(&decode->op[0]);
+    compute_xmm_offset(&decode->op[2]);
+
+    dstv = tcg_temp_new_vec(TCG_TYPE_V128);
+    tcg_gen_xthead_cvtps2pd_vec(dstv, OP_PTR2);
+    tcg_gen_st_vec(dstv, OP_PTR0, 0);
+
+    xthead_set_xmm_state_defined(s, dst, true, false);
+    return true;
+}
+
+static bool try_gen_xthead_scalar_pass_vec(DisasContext *s, X86DecodedInsn *decode,
+                                           bool (*emit)(DisasContext *, X86DecodedInsn *,
+                                                        TCGv_vec))
+{
+    TCGv_vec passv;
+
+    if (!xthead_sse_xmm_legacy_enabled(s) || decode->op[0].has_ea) {
+        return false;
+    }
+
+    compute_xmm_offset(&decode->op[0]);
+    compute_xmm_offset(&decode->op[1]);
+    compute_xmm_offset(&decode->op[2]);
+
+    passv = tcg_temp_new_vec(TCG_TYPE_V128);
+    tcg_gen_ld_vec(passv, OP_PTR1, 0);
+    return emit(s, decode, passv);
+}
+
+static bool emit_xthead_cvtsd2ss(DisasContext *s, X86DecodedInsn *decode,
+                                 TCGv_vec passv)
+{
+    int dst = decode->op[0].n;
+
+    tcg_gen_xthead_cvtsd2ss_vec(passv, passv, OP_PTR2,
+                                gen_xthead_x86_rm_from_mxcsr());
+    tcg_gen_st_vec(passv, OP_PTR0, 0);
+    xthead_copy_high64_state(s, dst, decode->op[1].has_ea ? -1 : decode->op[1].n);
+    return true;
+}
+
+static bool emit_xthead_cvtss2sd(DisasContext *s, X86DecodedInsn *decode,
+                                 TCGv_vec passv)
+{
+    int dst = decode->op[0].n;
+
+    tcg_gen_xthead_cvtss2sd_vec(passv, passv, OP_PTR2);
+    tcg_gen_st_vec(passv, OP_PTR0, 0);
+    xthead_copy_high64_state(s, dst, decode->op[1].has_ea ? -1 : decode->op[1].n);
+    return true;
+}
+
+static bool emit_xthead_cvtsi2sd(DisasContext *s, X86DecodedInsn *decode,
+                                 TCGv_vec passv)
+{
+    int dst = decode->op[0].n;
+
+    tcg_gen_xthead_cvtsi2sd_vec(passv, passv, s->T1,
+                                gen_xthead_x86_rm_from_mxcsr(),
+                                decode->op[2].ot == MO_64);
+    tcg_gen_st_vec(passv, OP_PTR0, 0);
+    xthead_copy_high64_state(s, dst, decode->op[1].has_ea ? -1 : decode->op[1].n);
+    return true;
+}
+
+static bool emit_xthead_roundss(DisasContext *s, X86DecodedInsn *decode,
+                                TCGv_vec passv)
+{
+    int dst = decode->op[0].n;
+
+    tcg_gen_xthead_roundss_vec(passv, passv, OP_PTR2,
+                               gen_xthead_roundss_rm(decode));
+    tcg_gen_st_vec(passv, OP_PTR0, 0);
+    xthead_copy_high64_state(s, dst, decode->op[1].has_ea ? -1 : decode->op[1].n);
+    return true;
+}
+
+static bool try_gen_xthead_cvtsd2ss(DisasContext *s, X86DecodedInsn *decode)
+{
+    return xthead_sse_xmm_legacy_enabled(s) &&
+           !decode->op[0].has_ea &&
+           try_gen_xthead_scalar_pass_vec(s, decode, emit_xthead_cvtsd2ss);
+}
+
+static bool try_gen_xthead_cvtss2sd(DisasContext *s, X86DecodedInsn *decode)
+{
+    return xthead_sse_xmm_legacy_enabled(s) &&
+           !decode->op[0].has_ea &&
+           try_gen_xthead_scalar_pass_vec(s, decode, emit_xthead_cvtss2sd);
+}
+
+static bool try_gen_xthead_cvtsi2sd(DisasContext *s, X86DecodedInsn *decode)
+{
+    return xthead_sse_xmm_legacy_enabled(s) &&
+           !decode->op[0].has_ea &&
+           try_gen_xthead_scalar_pass_vec(s, decode, emit_xthead_cvtsi2sd);
+}
+
+static bool try_gen_xthead_roundss(DisasContext *s, X86DecodedInsn *decode)
+{
+    return xthead_sse_xmm_legacy_enabled(s) &&
+           !decode->op[0].has_ea &&
+           try_gen_xthead_scalar_pass_vec(s, decode, emit_xthead_roundss);
+}
+#else
+static bool try_gen_xthead_cvtpd2ps(DisasContext *s, X86DecodedInsn *decode)
+{
+    (void)s;
+    (void)decode;
+    return false;
+}
+
+static bool try_gen_xthead_cvtps2pd(DisasContext *s, X86DecodedInsn *decode)
+{
+    (void)s;
+    (void)decode;
+    return false;
+}
+
+static bool try_gen_xthead_cvtsd2ss(DisasContext *s, X86DecodedInsn *decode)
+{
+    (void)s;
+    (void)decode;
+    return false;
+}
+
+static bool try_gen_xthead_cvtss2sd(DisasContext *s, X86DecodedInsn *decode)
+{
+    (void)s;
+    (void)decode;
+    return false;
+}
+
+static bool try_gen_xthead_cvtsi2sd(DisasContext *s, X86DecodedInsn *decode)
+{
+    (void)s;
+    (void)decode;
+    return false;
+}
+
+static bool try_gen_xthead_roundss(DisasContext *s, X86DecodedInsn *decode)
+{
+    (void)s;
+    (void)decode;
+    return false;
+}
+#endif
+
 static void gen_binary_fp_sse_with_fastpath(DisasContext *s,
                                             X86DecodedInsn *decode,
                                             SSEEmitFn gen_orig,
@@ -4432,6 +4661,9 @@ static void gen_VCOMI(DisasContext *s, X86DecodedInsn *decode)
 
 static void gen_VCVTPD2PS(DisasContext *s, X86DecodedInsn *decode)
 {
+    if (try_gen_xthead_cvtpd2ps(s, decode)) {
+        return;
+    }
     if (s->vex_l) {
         gen_helper_cvtpd2ps_ymm(tcg_env, OP_PTR0, OP_PTR2);
     } else {
@@ -4441,6 +4673,9 @@ static void gen_VCVTPD2PS(DisasContext *s, X86DecodedInsn *decode)
 
 static void gen_VCVTPS2PD(DisasContext *s, X86DecodedInsn *decode)
 {
+    if (try_gen_xthead_cvtps2pd(s, decode)) {
+        return;
+    }
     if (s->vex_l) {
         gen_helper_cvtps2pd_ymm(tcg_env, OP_PTR0, OP_PTR2);
     } else {
@@ -4464,11 +4699,17 @@ static void gen_VCVTPS2PH(DisasContext *s, X86DecodedInsn *decode)
 
 static void gen_VCVTSD2SS(DisasContext *s, X86DecodedInsn *decode)
 {
+    if (try_gen_xthead_cvtsd2ss(s, decode)) {
+        return;
+    }
     gen_helper_cvtsd2ss(tcg_env, OP_PTR0, OP_PTR1, OP_PTR2);
 }
 
 static void gen_VCVTSS2SD(DisasContext *s, X86DecodedInsn *decode)
 {
+    if (try_gen_xthead_cvtss2sd(s, decode)) {
+        return;
+    }
     gen_helper_cvtss2sd(tcg_env, OP_PTR0, OP_PTR1, OP_PTR2);
 }
 
@@ -4476,6 +4717,10 @@ static void gen_VCVTSI2Sx(DisasContext *s, X86DecodedInsn *decode)
 {
     int vec_len = vector_len(s, decode);
     TCGv_i32 in;
+
+    if ((s->prefix & PREFIX_REPNZ) && try_gen_xthead_cvtsi2sd(s, decode)) {
+        return;
+    }
 
     tcg_gen_gvec_mov(MO_64, decode->op[0].offset, decode->op[1].offset, vec_len, vec_len);
 
@@ -4815,6 +5060,9 @@ static void gen_VROUNDSD(DisasContext *s, X86DecodedInsn *decode)
 
 static void gen_VROUNDSS(DisasContext *s, X86DecodedInsn *decode)
 {
+    if (try_gen_xthead_roundss(s, decode)) {
+        return;
+    }
     TCGv_i32 imm = tcg_constant8u_i32(decode->immediate);
     assert(!s->vex_l);
     gen_helper_roundss_xmm(tcg_env, OP_PTR0, OP_PTR1, OP_PTR2, imm);

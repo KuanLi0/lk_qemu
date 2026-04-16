@@ -288,6 +288,52 @@ void tcg_gen_stl_vec(TCGv_vec r, TCGv_ptr b, TCGArg o, TCGType low_type)
 }
 
 #if defined(__riscv) && __riscv_xlen == 64
+static void vec_gen_2_mix(TCGOpcode opc, TCGType type, unsigned vece,
+                          TCGArg r, TCGArg a)
+{
+    TCGOp *op = tcg_emit_op(opc, 2);
+    TCGOP_TYPE(op) = type;
+    TCGOP_VECE(op) = vece;
+    op->args[0] = r;
+    op->args[1] = a;
+}
+
+static void vec_gen_3_mix(TCGOpcode opc, TCGType type, unsigned vece,
+                          TCGArg r, TCGArg a, TCGArg b)
+{
+    TCGOp *op = tcg_emit_op(opc, 3);
+    TCGOP_TYPE(op) = type;
+    TCGOP_VECE(op) = vece;
+    op->args[0] = r;
+    op->args[1] = a;
+    op->args[2] = b;
+}
+
+static void vec_gen_4_mix(TCGOpcode opc, TCGType type, unsigned vece,
+                          TCGArg r, TCGArg a, TCGArg b, TCGArg c)
+{
+    TCGOp *op = tcg_emit_op(opc, 4);
+    TCGOP_TYPE(op) = type;
+    TCGOP_VECE(op) = vece;
+    op->args[0] = r;
+    op->args[1] = a;
+    op->args[2] = b;
+    op->args[3] = c;
+}
+
+static void vec_gen_5_mix(TCGOpcode opc, TCGType type, unsigned vece,
+                          TCGArg r, TCGArg a, TCGArg b, TCGArg c, TCGArg d)
+{
+    TCGOp *op = tcg_emit_op(opc, 5);
+    TCGOP_TYPE(op) = type;
+    TCGOP_VECE(op) = vece;
+    op->args[0] = r;
+    op->args[1] = a;
+    op->args[2] = b;
+    op->args[3] = c;
+    op->args[4] = d;
+}
+
 void tcg_gen_xthead_vfaddsd_vec(TCGv_vec r, TCGv_vec a, TCGv_vec b)
 {
     TCGArg ri = tcgv_vec_arg(r);
@@ -310,6 +356,80 @@ void tcg_gen_xthead_vfsubsd_vec(TCGv_vec r, TCGv_vec a, TCGv_vec b)
     tcg_debug_assert(arg_temp(ai)->base_type == TCG_TYPE_V128);
     tcg_debug_assert(arg_temp(bi)->base_type == TCG_TYPE_V128);
     vec_gen_3(INDEX_op_xthead_vfsubsd_vec, TCG_TYPE_V128, MO_64, ri, ai, bi);
+}
+
+void tcg_gen_xthead_cvtps2pd_vec(TCGv_vec r, TCGv_ptr src)
+{
+    TCGArg ri = tcgv_vec_arg(r);
+    TCGArg si = tcgv_ptr_arg(src);
+
+    tcg_debug_assert(arg_temp(ri)->base_type == TCG_TYPE_V128);
+    vec_gen_2_mix(INDEX_op_xthead_cvtps2pd_vec, TCG_TYPE_V128, MO_64, ri, si);
+}
+
+void tcg_gen_xthead_cvtpd2ps_vec(TCGv_vec r, TCGv_ptr src, TCGv_i64 rm)
+{
+    TCGArg ri = tcgv_vec_arg(r);
+    TCGArg si = tcgv_ptr_arg(src);
+    TCGArg mi = tcgv_i64_arg(rm);
+
+    tcg_debug_assert(arg_temp(ri)->base_type == TCG_TYPE_V128);
+    vec_gen_3_mix(INDEX_op_xthead_cvtpd2ps_vec, TCG_TYPE_V128, MO_32,
+                  ri, si, mi);
+}
+
+void tcg_gen_xthead_cvtss2sd_vec(TCGv_vec r, TCGv_vec a, TCGv_ptr src)
+{
+    TCGArg ri = tcgv_vec_arg(r);
+    TCGArg ai = tcgv_vec_arg(a);
+    TCGArg si = tcgv_ptr_arg(src);
+
+    tcg_debug_assert(arg_temp(ri)->base_type == TCG_TYPE_V128);
+    tcg_debug_assert(arg_temp(ai)->base_type == TCG_TYPE_V128);
+    vec_gen_3_mix(INDEX_op_xthead_cvtss2sd_vec, TCG_TYPE_V128, MO_64,
+                  ri, ai, si);
+}
+
+void tcg_gen_xthead_cvtsd2ss_vec(TCGv_vec r, TCGv_vec a,
+                                 TCGv_ptr src, TCGv_i64 rm)
+{
+    TCGArg ri = tcgv_vec_arg(r);
+    TCGArg ai = tcgv_vec_arg(a);
+    TCGArg si = tcgv_ptr_arg(src);
+    TCGArg mi = tcgv_i64_arg(rm);
+
+    tcg_debug_assert(arg_temp(ri)->base_type == TCG_TYPE_V128);
+    tcg_debug_assert(arg_temp(ai)->base_type == TCG_TYPE_V128);
+    vec_gen_4_mix(INDEX_op_xthead_cvtsd2ss_vec, TCG_TYPE_V128, MO_32,
+                  ri, ai, si, mi);
+}
+
+void tcg_gen_xthead_cvtsi2sd_vec(TCGv_vec r, TCGv_vec a, TCGv_i64 src,
+                                 TCGv_i64 rm, bool is_qword)
+{
+    TCGArg ri = tcgv_vec_arg(r);
+    TCGArg ai = tcgv_vec_arg(a);
+    TCGArg si = tcgv_i64_arg(src);
+    TCGArg mi = tcgv_i64_arg(rm);
+
+    tcg_debug_assert(arg_temp(ri)->base_type == TCG_TYPE_V128);
+    tcg_debug_assert(arg_temp(ai)->base_type == TCG_TYPE_V128);
+    vec_gen_5_mix(INDEX_op_xthead_cvtsi2sd_vec, TCG_TYPE_V128, MO_64,
+                  ri, ai, si, mi, is_qword);
+}
+
+void tcg_gen_xthead_roundss_vec(TCGv_vec r, TCGv_vec a,
+                                TCGv_ptr src, TCGv_i64 rm)
+{
+    TCGArg ri = tcgv_vec_arg(r);
+    TCGArg ai = tcgv_vec_arg(a);
+    TCGArg si = tcgv_ptr_arg(src);
+    TCGArg mi = tcgv_i64_arg(rm);
+
+    tcg_debug_assert(arg_temp(ri)->base_type == TCG_TYPE_V128);
+    tcg_debug_assert(arg_temp(ai)->base_type == TCG_TYPE_V128);
+    vec_gen_4_mix(INDEX_op_xthead_roundss_vec, TCG_TYPE_V128, MO_32,
+                  ri, ai, si, mi);
 }
 #endif
 
